@@ -7,7 +7,6 @@ from pathlib import Path
 def _load_service_account() -> tuple[str, str] | None:
     json_path = os.getenv("GEE_SERVICE_ACCOUNT_JSON_PATH", "")
     if not json_path:
-        # Default: resolve relative to this file's parent (ml-service/app/../keys/...)
         json_path = str(Path(__file__).resolve().parent.parent / "keys" / "gee-service-account.json")
     resolved = Path(json_path)
     if not resolved.is_absolute():
@@ -38,7 +37,6 @@ def fetch_ndvi_from_gee(
         credentials = ee.ServiceAccountCredentials(service_account_email, key_data=private_key)
         ee.Initialize(credentials, project=os.getenv("GEE_PROJECT"))
 
-        # Leaflet gives [lat, lon], while Earth Engine expects [lon, lat].
         gee_coords = [[point[1], point[0]] for point in coordinates]
         if gee_coords[0] != gee_coords[-1]:
             gee_coords.append(gee_coords[0])

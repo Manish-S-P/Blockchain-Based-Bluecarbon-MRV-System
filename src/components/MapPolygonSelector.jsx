@@ -62,7 +62,6 @@ const MapPolygonSelector = ({ onCoordinatesGenerated, onAreaComputed }) => {
 
   return (
     <div className="space-y-4">
-      {/* Info bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/[0.03] p-4 rounded-xl border border-white/[0.06]">
         <div className="text-sm text-slate-400">
           <p className="font-semibold text-white mb-1 flex items-center gap-2">
@@ -89,7 +88,6 @@ const MapPolygonSelector = ({ onCoordinatesGenerated, onAreaComputed }) => {
         </button>
       </div>
 
-      {/* Map */}
       <div className="h-96 w-full rounded-2xl overflow-hidden border border-white/[0.08] shadow-lg shadow-black/20 relative z-0">
         <MapContainer center={[13.0827, 80.2707]} zoom={12} scrollWheelZoom={true} className="h-full w-full">
           <TileLayer

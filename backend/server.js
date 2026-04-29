@@ -7,7 +7,7 @@ const Project = require('./models/Project');
 const { runMrvModels } = require('./services/mlService');
 const { uploadMrvReportToIpfs } = require('./services/ipfsService');
 const { registerPlotOnChain, mintCreditOnChain } = require('./services/blockchainService');
-const { DEFAULT_TIME_YEARS, CONTRACT_TOLERANCE, calculateExpectedCredits } = require('./services/credits');
+const { DEFAULT_TIME_YEARS, CONTRACT_TOLERANCE, calculateExpectedCredits, ECOSYSTEM_SAFETY_BASELINES } = require('./services/credits');
 
 const app = express();
 let dbConnected = false;
@@ -170,7 +170,7 @@ app.post('/api/projects', ensureDbConnected, async (req, res) => {
     if (!allowedEcosystems.has(ecosystemCheck.identifiedEcosystem)) {
       return res.status(400).json({
         success: false,
-        error: `Plot rejected: identified ecosystem is "${ecosystemCheck.identifiedEcosystem}" (confidence ${ecosystemCheck.ecosystemConfidence}). Only mangrove, seagrass, or saltmarsh are allowed.`,
+        error: `Registration failed because this plot was identified as "${ecosystemCheck.identifiedEcosystem}". We currently only support mangrove, seagrass, or saltmarsh ecosystems.`,
         identifiedEcosystem: ecosystemCheck.identifiedEcosystem,
         ecosystemConfidence: ecosystemCheck.ecosystemConfidence,
       });
@@ -178,7 +178,7 @@ app.post('/api/projects', ensureDbConnected, async (req, res) => {
     if (!ecosystemCheck.ecosystemMatchesClaim) {
       return res.status(400).json({
         success: false,
-        error: `Plot rejected: claimed ecosystem "${candidateProject.vegetationType}" does not match identified "${ecosystemCheck.identifiedEcosystem}" (confidence ${ecosystemCheck.ecosystemConfidence}).`,
+        error: `The identified ecosystem ("${ecosystemCheck.identifiedEcosystem}") does not match your selection ("${candidateProject.vegetationType}"). Please verify your plot boundaries or ecosystem type.`,
         identifiedEcosystem: ecosystemCheck.identifiedEcosystem,
         ecosystemConfidence: ecosystemCheck.ecosystemConfidence,
       });
@@ -325,7 +325,6 @@ app.post('/api/mrv/backfill/:plotId', ensureDbConnected, async (req, res) => {
       const cycleMetrics = await runMrvModels(project, {
         startDate: window.startDate,
         endDate: window.endDate,
-        // Backfill should stay usable in local/demo mode even when ML/GEE services are down.
         strictRealData: false,
       });
       const cycle = {
@@ -367,8 +366,20 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, async (req, res)
 
     const ndviValues = project.monitoringCycles.map(cycle => cycle.ndvi);
     const averageNdvi = Number((ndviValues.reduce((sum, current) => sum + current, 0) / ndviValues.length).toFixed(4));
-    const expectedCredits = calculateExpectedCredits(project, DEFAULT_TIME_YEARS);
-    const submittedCredits = Number((expectedCredits * (1 + safeRandom(-0.03, 0.03))).toFixed(4));
+    
+    const cycleEstimates = project.monitoringCycles.map(c => c.estimatedCo2Tonnes || 0);
+    let expectedCredits = Number((cycleEstimates.reduce((sum, val) => sum + val, 0) / cycleEstimates.length).toFixed(4));
+
+    const NDVI_THRESHOLD = 0.45;
+    const baselineRate = ECOSYSTEM_SAFETY_BASELINES[project.vegetationType?.toLowerCase()] || 5;
+    
+    if (averageNdvi >= NDVI_THRESHOLD && expectedCredits < (project.area * baselineRate)) {
+      const baseline = project.area * baselineRate;
+      console.log(`[MRV] Safety Net Triggered for Plot ${project.plotId} (${project.vegetationType}). Avg NDVI: ${averageNdvi}, Credits: ${expectedCredits} -> ${baseline}`);
+      expectedCredits = baseline;
+    }
+    
+    const submittedCredits = Number((expectedCredits * (1 + safeRandom(-0.01, 0.01))).toFixed(4));
 
     const deviation = Math.abs(submittedCredits - expectedCredits) / expectedCredits;
     if (deviation > CONTRACT_TOLERANCE) {

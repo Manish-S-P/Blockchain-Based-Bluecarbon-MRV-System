@@ -7,7 +7,6 @@ async function main() {
     return;
   }
 
-  // Load the ABI from Hardhat artifacts
   const Contract = await hre.ethers.getContractFactory("BlueCarbonRegistry");
   const contract = Contract.attach(contractAddress);
 

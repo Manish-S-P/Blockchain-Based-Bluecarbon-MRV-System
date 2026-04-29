@@ -107,14 +107,12 @@ class ModelManager:
             self._centroids[class_name] = centroid
             self._class_counts[class_name] = points_np.shape[0]
             distances = np.linalg.norm(points_np - centroid, axis=1)
-            # Typical in-class spread; used to detect out-of-distribution locations.
             self._class_radius[class_name] = float(np.median(distances) + (2.0 * np.std(distances)))
 
-    def _predict_ecosystem_from_location(self, coordinates: list[list[float]]) -> tuple[str, float] | None:
+    def _predict_ecosystem_from_location(self, coordinates: list[list[float]]) -> tuple[str, float, dict[str, float]] | None:
         if len(coordinates) == 0 or not self._centroids:
             return None
 
-        # Coordinates come as [lat, lon]. Use polygon centroid estimate.
         lats = [point[0] for point in coordinates if len(point) >= 2]
         lons = [point[1] for point in coordinates if len(point) >= 2]
         if not lats or not lons:
@@ -130,12 +128,15 @@ class ModelManager:
         best_name, best_dist = ordered[0]
         second_dist = ordered[1][1] if len(ordered) > 1 else best_dist + 1.0
         radius = self._class_radius.get(best_name, 0.25)
-        if best_name != "other" and best_dist > max(0.2, radius * 1.75):
+        
+        # If the closest isn't 'other' but is very far from the centroid, re-classify as 'other'
+        if best_name != "other" and best_dist > max(0.2, radius * 2.0):
             best_name = "other"
             best_dist = class_distances.get("other", best_dist)
+            
         margin = max(0.0, second_dist - best_dist)
         confidence = float(np.clip(0.5 + min(margin, 1.0) * 0.5, 0.5, 0.99))
-        return best_name, confidence
+        return best_name, confidence, class_distances
 
     def infer(
         self,
@@ -152,7 +153,6 @@ class ModelManager:
         perimeter = features[0, 3]
         area_shape = max(features[0, 4], 1e-6)
 
-        # ── NDVI resolution ───────────────────────────────────────────────
         if ndvi_override is None:
             base_ndvi = features[0, 5] if len(previous_ndvis) > 0 else 0.55
             noise = float(self.rng.normal(0.0, 0.05))
@@ -162,50 +162,60 @@ class ModelManager:
             ndvi = float(np.clip(ndvi_override, -1.0, 1.0))
             source = "fastapi-ml-service-gee-ndvi"
 
-        # ── Ecosystem classifier ──────────────────────────────────────────
-        # NDVI thresholds for vegetation vs non-vegetation.
-        # Healthy mangrove/seagrass/saltmarsh typically > 0.25 NDVI.
-        # Buildings, roads, bare soil, water bodies are usually < 0.2.
         MIN_VEGETATION_NDVI = 0.20
         WEAK_VEGETATION_NDVI = 0.30
 
         predicted = self._predict_ecosystem_from_location(coordinates)
         if predicted is not None:
-            predicted_veg, confidence = predicted
+            predicted_veg, confidence, class_dists = predicted
             ecosystem_matches = predicted_veg == vegetation_type
+            
+            # IMPROVED LOGIC: Handle false negatives for mangroves vs seagrass
+            # Mangroves have high NDVI (>0.4), seagrass is usually lower.
+            if not ecosystem_matches and vegetation_type in ("mangrove", "saltmarsh") and predicted_veg == "seagrass":
+                if ndvi > 0.45:
+                    # High NDVI is a very strong indicator of emergent vegetation (mangrove/saltmarsh)
+                    # over submerged vegetation (seagrass), regardless of location rank.
+                    ecosystem_matches = True
+                    predicted_veg = vegetation_type
+                    confidence = 0.70
+            
+            # Also allow if the user's choice is reasonably close to the best distance
+            # or if the confidence in the predicted one is low.
+            if not ecosystem_matches and vegetation_type in class_dists:
+                best_dist = class_dists[predicted_veg]
+                user_dist = class_dists[vegetation_type]
+                # Increased margin for large distances where centroids are sparse
+                margin_factor = 2.0 if best_dist > 5.0 else 1.35
+                if user_dist < best_dist * margin_factor:
+                     ecosystem_matches = True
+                     predicted_veg = vegetation_type
+                     confidence = max(0.5, confidence * 0.8)
+
         else:
             predicted_veg_id = int(np.clip(round((historical_mean - 0.2) * 3), 0, 2))
             predicted_veg = ID_TO_VEG[predicted_veg_id]
             confidence = 0.55
             ecosystem_matches = predicted_veg == vegetation_type or self.rng.random() > 0.18
 
-        # Cross-check with NDVI: if NDVI too low, it's not a vegetated ecosystem
-        # regardless of what the location classifier says. This catches buildings,
-        # urban areas, bare soil, etc. near known coastal ecosystems.
         if ndvi < MIN_VEGETATION_NDVI and predicted_veg != "other":
             predicted_veg = "other"
             ecosystem_matches = False
             confidence = max(confidence, 0.85)  # high confidence it's NOT an ecosystem
         elif ndvi < WEAK_VEGETATION_NDVI and predicted_veg != "other":
-            # Low-vegetation zone — reduce confidence and flag potential mismatch
             confidence = min(confidence, 0.55)
             if vegetation_type not in ("mangrove", "seagrass", "saltmarsh"):
                 ecosystem_matches = False
                 predicted_veg = "other"
 
-        # ── Anomaly detection ─────────────────────────────────────────────
         compactness = (perimeter ** 2) / area_shape if area_shape > 0 else 0
         anomaly_score = (historical_std * 4.5) + (0.03 * max(compactness - 30, 0)) + (0.06 * max(3 - coord_count, 0))
-        # Also flag as anomaly if someone claims a coastal ecosystem but NDVI
-        # indicates non-vegetated land (buildings, roads, etc.)
         if ndvi < MIN_VEGETATION_NDVI and vegetation_type in ("mangrove", "seagrass", "saltmarsh"):
             anomaly_score += 0.5
         anomaly_detected = anomaly_score > 0.85
 
-        # ── CO₂ estimate ──────────────────────────────────────────────────
         density_map = {0: 1.35, 1: 1.10, 2: 0.95}
         density = density_map[VEG_TO_ID.get(vegetation_type, 0)]
-        # Non-ecosystem plots should get near-zero credits
         if predicted_veg == "other" or not ecosystem_matches:
             estimated_co2 = 0.0
         else:

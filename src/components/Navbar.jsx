@@ -26,7 +26,6 @@ const Navbar = () => {
     <nav className="glass border-b border-white/[0.06] sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 group">
             <div className="relative">
               <div className="absolute inset-0 bg-emerald-400/20 rounded-lg blur-md group-hover:bg-emerald-400/30 transition-colors" />
@@ -37,7 +36,6 @@ const Navbar = () => {
             </span>
           </Link>
 
-          {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-3">
             {account ? (
               <>
@@ -52,7 +50,6 @@ const Navbar = () => {
                   </Link>
                 ))}
 
-                {/* Wallet chip */}
                 <button
                   onClick={copyAddress}
                   className="glass-card flex items-center gap-2.5 px-3.5 py-1.5 text-sm cursor-pointer hover:bg-white/[0.08] transition-all duration-200 group"
@@ -90,7 +87,6 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Mobile menu button */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="md:hidden p-2 text-slate-400 hover:text-white transition-colors"
@@ -100,7 +96,6 @@ const Navbar = () => {
         </div>
       </div>
 
-      {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden border-t border-white/[0.06] bg-slate-900/95 backdrop-blur-xl animate-scale-in">
           <div className="px-4 py-4 space-y-2">

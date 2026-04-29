@@ -4,6 +4,12 @@ const ECOSYSTEM_CARBON_DENSITY = {
   saltmarsh: 0.95,
 };
 
+const ECOSYSTEM_SAFETY_BASELINES = {
+  mangrove: 8.0,
+  seagrass: 4.0,
+  saltmarsh: 6.0,
+};
+
 const BASE_RATE = Number(process.env.CARBON_BASE_RATE || 0.8);
 const DEFAULT_TIME_YEARS = Number(process.env.CARBON_DEFAULT_TIME_YEARS || 1);
 const CONTRACT_TOLERANCE = Number(process.env.CONTRACT_TOLERANCE || 0.05);
@@ -15,6 +21,7 @@ const calculateExpectedCredits = (project, timeYears = DEFAULT_TIME_YEARS) => {
 
 module.exports = {
   ECOSYSTEM_CARBON_DENSITY,
+  ECOSYSTEM_SAFETY_BASELINES,
   BASE_RATE,
   DEFAULT_TIME_YEARS,
   CONTRACT_TOLERANCE,

@@ -102,13 +102,11 @@ const ProjectRegistration = () => {
     <div className="flex-1 w-full p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-8">
 
-        {/* Header + step indicator */}
         <div className="text-center">
           <h1 className="text-2xl md:text-3xl font-bold text-white">Project Registration</h1>
           <p className="text-slate-500 text-sm mt-2">Register your coastal ecosystem plot into the blockchain registry.</p>
         </div>
 
-        {/* Step indicator */}
         <div className="flex items-center justify-center gap-2 md:gap-4">
           {STEPS.map((step, index) => (
             <React.Fragment key={step.id}>
@@ -139,7 +137,6 @@ const ProjectRegistration = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
 
-          {/* Step 1: Personal Details */}
           {currentStep === 1 && (
             <div className="glass-card p-6 md:p-8 animate-fade-up">
               <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-3">
@@ -189,7 +186,6 @@ const ProjectRegistration = () => {
             </div>
           )}
 
-          {/* Step 2: Land Identification */}
           {currentStep === 2 && (
             <div className="glass-card p-6 md:p-8 animate-fade-up">
               <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-3">
@@ -250,7 +246,6 @@ const ProjectRegistration = () => {
             </div>
           )}
 
-          {/* Step 3: Ecosystem */}
           {currentStep === 3 && (
             <div className="glass-card p-6 md:p-8 animate-fade-up">
               <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-3">

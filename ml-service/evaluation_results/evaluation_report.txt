@@ -1,0 +1,29 @@
+BLUE CARBON REGISTRY – ML PERFORMANCE EVALUATION REPORT
+============================================================
+
+1. RANDOM FOREST CLASSIFIER
+   Overall Accuracy     : 0.9950
+   CV Accuracy (5-fold) : 0.9950 ± 0.0100
+   CV F1 macro (5-fold) : 0.9950 ± 0.0100
+
+              precision    recall  f1-score   support
+
+    mangrove       1.00      1.00      1.00        50
+    seagrass       1.00      0.98      0.99        50
+   saltmarsh       0.98      1.00      0.99        50
+       other       1.00      1.00      1.00        50
+
+    accuracy                           0.99       200
+   macro avg       1.00      0.99      0.99       200
+weighted avg       1.00      0.99      0.99       200
+
+
+2. ISOLATION FOREST (ANOMALY DETECTION)
+   Anomalies detected: 10/200 (5.0%)
+
+3. ROC AUC SCORES
+   mangrove     : 1.0000
+   other        : 1.0000
+   saltmarsh    : 1.0000
+   seagrass     : 1.0000
+   macro avg    : 1.0000

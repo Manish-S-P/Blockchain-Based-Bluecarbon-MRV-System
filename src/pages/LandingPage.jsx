@@ -45,10 +45,8 @@ const LandingPage = () => {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden min-h-[calc(100vh-64px)]">
-      {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950" />
 
-      {/* Dot grid */}
       <div
         className="absolute inset-0 opacity-[0.04]"
         style={{
@@ -57,15 +55,12 @@ const LandingPage = () => {
         }}
       />
 
-      {/* Floating orbs */}
       <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-emerald-500/10 rounded-full blur-[100px] animate-float" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-teal-500/8 rounded-full blur-[120px] animate-float-delayed" />
       <div className="absolute top-1/2 right-1/3 w-48 h-48 bg-cyan-500/8 rounded-full blur-[80px] animate-float-slow" />
 
-      {/* Main content */}
       <div className="max-w-6xl w-full text-center z-10 px-6 py-16 md:py-24 space-y-10">
 
-        {/* Badge */}
         <div className="opacity-0 animate-fade-up">
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-xs font-medium text-emerald-300 tracking-wide uppercase">
             <Waves className="w-3.5 h-3.5" />
@@ -73,7 +68,6 @@ const LandingPage = () => {
           </span>
         </div>
 
-        {/* Headline */}
         <div className="space-y-4 opacity-0 animate-fade-up-delay">
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[0.9]">
             <span className="text-white">Blue Carbon</span>
@@ -85,7 +79,6 @@ const LandingPage = () => {
           </p>
         </div>
 
-        {/* CTA */}
         <div className="opacity-0 animate-fade-up-delay-2">
           <button
             onClick={connectWallet}
@@ -100,7 +93,6 @@ const LandingPage = () => {
           </p>
         </div>
 
-        {/* Feature cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-20 pt-12 border-t border-white/[0.06]">
           {features.map((feature, index) => (
             <div
@@ -117,7 +109,6 @@ const LandingPage = () => {
           ))}
         </div>
 
-        {/* Tech stack pills */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
           {techStack.map((item) => (
             <div key={item.label} className="glass-card px-5 py-3.5 flex items-center justify-between">
@@ -132,7 +123,6 @@ const LandingPage = () => {
           ))}
         </div>
 
-        {/* Bottom ecosystem icons */}
         <div className="flex items-center justify-center gap-8 pt-8 opacity-40">
           <TreePine className="w-5 h-5 text-emerald-500" />
           <Waves className="w-5 h-5 text-teal-500" />

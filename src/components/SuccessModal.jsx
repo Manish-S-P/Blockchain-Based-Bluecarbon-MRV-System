@@ -8,13 +8,11 @@ const SuccessModal = ({ isOpen, onClose, title, message, txHash }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-fade-in"
         onClick={onClose}
       />
       
-      {/* Modal Content */}
       <div className="relative glass-card w-full max-w-md p-8 shadow-2xl animate-scale-in glow-emerald-strong border-emerald-500/20">
         <button 
           onClick={onClose}

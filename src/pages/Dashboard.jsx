@@ -318,7 +318,6 @@ const Dashboard = () => {
     <>
       <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-fade-up">
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white">Control Room</h1>
@@ -348,7 +347,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* System status */}
       {apiStatus && (
         <div className="glass-card p-4">
           <h2 className="text-xs font-semibold text-slate-500 mb-3 flex items-center gap-2 uppercase tracking-wider">
@@ -366,7 +364,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* Loading Overlay */}
       {activePlotAction && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center">
           <div className="glass-card p-8 max-w-md text-center animate-scale-in">
@@ -384,7 +381,6 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <KpiCard icon={TrendingUp} label="Avg NDVI" value={avgNdvi} gradient="from-emerald-500/20 to-teal-500/20" iconBg="text-emerald-400" />
         <KpiCard icon={Map} label="Total Area" value={`${totalArea} Ha`} gradient="from-blue-500/20 to-cyan-500/20" iconBg="text-blue-400" />
@@ -392,10 +388,8 @@ const Dashboard = () => {
         <KpiCard icon={Award} label="Credits" value={totalCredits} gradient="from-violet-500/20 to-purple-500/20" iconBg="text-violet-400" />
       </div>
 
-      {/* Chart + Projects */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
 
-        {/* NDVI Chart — real project data */}
         <div className="lg:col-span-2 glass-card p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
@@ -449,7 +443,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Project List Sidebar */}
         <div className="lg:col-span-1 glass-card p-4 flex flex-col max-h-[480px]">
           <h2 className="text-sm font-bold text-white mb-4 px-1">Registered Projects</h2>
           <div className="space-y-2 overflow-y-auto flex-1 pr-1">
@@ -479,7 +472,6 @@ const Dashboard = () => {
                   <span className="text-[10px] text-slate-600 font-mono">{proj.plotId || 'pending'}</span>
                   <ChevronRight className={`w-3.5 h-3.5 transition-colors ${selectedProjectId === proj._id ? 'text-emerald-400' : 'text-slate-600'}`} />
                 </div>
-                {/* Progress dots */}
                 <div className="flex gap-1 mt-2.5">
                   {[0,1,2,3].map(i => (
                     <div
@@ -503,7 +495,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Detail Panel */}
       <div className="glass-card p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -548,10 +539,8 @@ const Dashboard = () => {
           </div>
         ) : (
           <>
-            {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-up">
-                {/* Left: details */}
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     {[
@@ -589,7 +578,6 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {/* Right: workflow steps */}
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">MRV Pipeline</p>
                   {getWorkflowSteps(selectedProject).map((step, index) => (
@@ -611,7 +599,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Actions Tab */}
             {activeTab === 'actions' && (
               <div className="animate-fade-up space-y-4">
                 {errorMessage && (
@@ -721,7 +708,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Evidence Tab */}
             {activeTab === 'evidence' && (
               <div className="animate-fade-up">
                 <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
