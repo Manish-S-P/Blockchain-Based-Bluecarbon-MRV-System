@@ -3,10 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const { ethers } = require('ethers');
 
+const ECOSYSTEM_ENUM = { mangrove: 0, seagrass: 1, saltmarsh: 2 };
+
 const ecosystemToEnum = (vegetationType) => {
-  if (vegetationType === 'mangrove') return 0;
-  if (vegetationType === 'seagrass') return 1;
-  return 2;
+  const value = ECOSYSTEM_ENUM[String(vegetationType || '').toLowerCase()];
+  if (value === undefined) {
+    throw new Error(`Unsupported ecosystem type for on-chain registration: ${vegetationType}`);
+  }
+  return value;
 };
 
 const getContractClient = (network = 'local') => {
@@ -54,15 +58,24 @@ const getContractClient = (network = 'local') => {
   return new ethers.Contract(contractAddress, contractAbi, signer);
 };
 
+// Simulation is only used when no chain is configured. Once a chain is configured, failures
+// are surfaced instead of being masked by a fake transaction.
 const fallbackRegisterPlotOnChain = ({ plotId }) => ({
   success: true,
   txHash: `local-register-${plotId}`,
+  onChain: false,
 });
 
 const fallbackMintCreditOnChain = ({ plotId, walletAddress, submittedCredits }) => {
   const tokenSeed = `${plotId}:${walletAddress}:${submittedCredits}:${Date.now()}`;
   const tokenId = crypto.createHash('sha1').update(tokenSeed).digest('hex').slice(0, 12);
-  return { tokenId, txHash: 'local-simulation' };
+  return { tokenId, txHash: 'local-simulation', onChain: false };
+};
+
+const sendRegisterPlot = async (contract, { plotId, walletAddress, area, vegetationType }) => {
+  const areaWad = ethers.parseUnits(String(area), 18);
+  const tx = await contract.registerPlot(plotId, walletAddress, areaWad, ecosystemToEnum(vegetationType));
+  return tx.wait();
 };
 
 const registerPlotOnChain = async ({ plotId, walletAddress, area, vegetationType, network = 'local' }) => {
@@ -71,20 +84,22 @@ const registerPlotOnChain = async ({ plotId, walletAddress, area, vegetationType
     return fallbackRegisterPlotOnChain({ plotId });
   }
 
-  try {
-    const areaWad = ethers.parseUnits(String(area), 18);
-    const ecosystemEnum = ecosystemToEnum(vegetationType);
-    const tx = await contract.registerPlot(plotId, walletAddress, areaWad, ecosystemEnum);
-    const receipt = await tx.wait();
-    return { success: true, txHash: receipt.hash };
-  } catch (error) {
-    if (network === 'amoy') {
-      console.error('❌ Polygon Amoy Registration Error:', error);
-      throw error;
+  const receipt = await sendRegisterPlot(contract, { plotId, walletAddress, area, vegetationType });
+  return { success: true, txHash: receipt.hash, onChain: true };
+};
+
+const readMintedTokenId = (contract, receipt) => {
+  for (const log of receipt.logs) {
+    try {
+      const parsed = contract.interface.parseLog(log);
+      if (parsed?.name === 'CreditMinted') {
+        return parsed.args.tokenId.toString();
+      }
+    } catch {
+      // Log from another contract/event (e.g. ERC721 Transfer); skip it.
     }
-    console.warn('On-chain register failed, using fallback simulation:', error.message);
-    return fallbackRegisterPlotOnChain({ plotId });
   }
+  throw new Error(`CreditMinted event not found in transaction ${receipt.hash}`);
 };
 
 const mintCreditOnChain = async ({ plotId, walletAddress, submittedCredits, reportIpfsHash, network = 'local', area, vegetationType }) => {
@@ -93,33 +108,16 @@ const mintCreditOnChain = async ({ plotId, walletAddress, submittedCredits, repo
     return fallbackMintCreditOnChain({ plotId, walletAddress, submittedCredits });
   }
 
-  try {
-    if (network === 'amoy') {
-      try {
-        const areaWad = ethers.parseUnits(String(area || 0), 18);
-        const ecosystemEnum = ecosystemToEnum(vegetationType || 'mangrove');
-        const regTx = await contract.registerPlot(plotId, walletAddress, areaWad, ecosystemEnum);
-        await regTx.wait();
-      } catch (regErr) {
-        console.warn('⚠️ Auto-registration during mint skipped/failed:', regErr.message);
-        if (regErr.message.includes('insufficient funds')) {
-          throw regErr;
-        }
-      }
-    }
-
-    const tx = await contract.mintCredit(walletAddress, plotId, ethers.parseUnits(String(submittedCredits), 18), reportIpfsHash);
-    const receipt = await tx.wait();
-    const tokenId = receipt?.hash?.slice(0, 12) || crypto.randomUUID().slice(0, 12);
-    return { tokenId, txHash: receipt.hash };
-  } catch (error) {
-    if (network === 'amoy') {
-      console.error('❌ Polygon Amoy Minting Error:', error);
-      throw error;
-    }
-    console.warn('On-chain mint failed, using fallback mint simulation:', error.message);
-    return fallbackMintCreditOnChain({ plotId, walletAddress, submittedCredits });
+  // The plot may not exist on this chain yet (e.g. registered locally, minted on Amoy,
+  // or the contract was redeployed), so register it first when needed.
+  const plot = await contract.plots(plotId);
+  if (!plot.exists) {
+    await sendRegisterPlot(contract, { plotId, walletAddress, area, vegetationType });
   }
+
+  const tx = await contract.mintCredit(walletAddress, plotId, ethers.parseUnits(String(submittedCredits), 18), reportIpfsHash);
+  const receipt = await tx.wait();
+  return { tokenId: readMintedTokenId(contract, receipt), txHash: receipt.hash, onChain: true };
 };
 
 module.exports = {

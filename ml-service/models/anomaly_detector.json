@@ -1,0 +1,79 @@
+{
+  "trainedAt": "2026-10-08T14:46:19+00:00",
+  "targetFalseBlockRate": 0.05,
+  "ecosystems": {
+    "mangrove": {
+      "signals": {
+        "NDVI": {
+          "median": 0.00135,
+          "scale": 0.0647,
+          "observations": 3702
+        },
+        "VH": {
+          "median": -0.04879,
+          "scale": 0.91305,
+          "observations": 3840
+        }
+      },
+      "combine": "max",
+      "threshold": 3.675,
+      "calibrationPlots": 960
+    },
+    "saltmarsh": {
+      "signals": {
+        "NDVI": {
+          "median": 0.03512,
+          "scale": 0.12161,
+          "observations": 2179
+        },
+        "NDMI": {
+          "median": 0.01559,
+          "scale": 0.07886,
+          "observations": 2179
+        }
+      },
+      "combine": "mean",
+      "threshold": 2.359,
+      "calibrationPlots": 570
+    },
+    "seagrass": {
+      "signals": {
+        "B2": {
+          "median": 5e-05,
+          "scale": 0.01379,
+          "observations": 1839
+        },
+        "B3": {
+          "median": -0.00115,
+          "scale": 0.01468,
+          "observations": 1839
+        }
+      },
+      "combine": "mean",
+      "threshold": 3.746,
+      "calibrationPlots": 480
+    }
+  },
+  "evaluation": {
+    "mangrove_loss_2021_detected": {
+      "rate": 0.9,
+      "plots": 400
+    },
+    "mangrove_intact_false_block_sea": {
+      "rate": 0.095,
+      "plots": 400
+    },
+    "mangrove_healthy_false_block_heldout": {
+      "rate": 0.013,
+      "plots": 150
+    },
+    "saltmarsh_healthy_false_block_heldout": {
+      "rate": 0.137,
+      "plots": 73
+    },
+    "seagrass_healthy_false_block_heldout": {
+      "rate": 0.12,
+      "plots": 50
+    }
+  }
+}

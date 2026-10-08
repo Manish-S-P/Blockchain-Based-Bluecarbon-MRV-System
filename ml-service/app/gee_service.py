@@ -1,81 +1,119 @@
-import json
-import os
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import date, datetime, timedelta, timezone
+
+from .earth_engine import (
+    FEATURE_NAMES,
+    SAMPLE_SCALE_M,
+    annual_window,
+    build_feature_image,
+    build_monitoring_image,
+    init_earth_engine,
+    sentinel2_scenes,
+)
+
+MAX_CLASSIFICATION_PIXELS = 500
+MONITOR_SCALE_M = 10
 
 
-def _load_service_account() -> tuple[str, str] | None:
-    json_path = os.getenv("GEE_SERVICE_ACCOUNT_JSON_PATH", "")
-    if not json_path:
-        json_path = str(Path(__file__).resolve().parent.parent / "keys" / "gee-service-account.json")
-    resolved = Path(json_path)
-    if not resolved.is_absolute():
-        resolved = Path.cwd() / resolved
-    if not resolved.exists():
+def _plot_polygon(coordinates: list[list[float]]):
+    import ee
+
+    # Frontend coordinates are [lat, lon]; Earth Engine wants [lon, lat] and a closed ring.
+    gee_coords = [[point[1], point[0]] for point in coordinates]
+    if gee_coords[0] != gee_coords[-1]:
+        gee_coords.append(gee_coords[0])
+    return ee.Geometry.Polygon([gee_coords])
+
+
+def fetch_plot_pixel_features(coordinates: list[list[float]], as_of: date) -> list[dict] | None:
+    """Classifier features for each 30 m pixel in the plot, from the 12 months ending `as_of`.
+
+    Returns None when Earth Engine is unavailable or the plot has no usable pixels.
+    """
+    if len(coordinates) < 3:
         return None
 
-    payload = json.loads(resolved.read_text(encoding="utf-8"))
-    return payload["client_email"], payload["private_key"]
+    try:
+        if not init_earth_engine():
+            return None
+        import ee
+
+        polygon = _plot_polygon(coordinates)
+        start, end = annual_window(as_of)
+        image = build_feature_image(start, end, polygon)
+        samples = image.sample(
+            region=polygon,
+            scale=SAMPLE_SCALE_M,
+            numPixels=MAX_CLASSIFICATION_PIXELS,
+            seed=0,
+            dropNulls=True,
+        ).getInfo()["features"]
+        rows = [feature["properties"] for feature in samples]
+
+        if not rows:
+            # Plot smaller than one pixel: use the pixel under its centre.
+            centre = image.reduceRegion(ee.Reducer.first(), polygon.centroid(1), SAMPLE_SCALE_M).getInfo()
+            if all(centre.get(name) is not None for name in FEATURE_NAMES):
+                rows = [centre]
+        return rows or None
+    except Exception as exc:  # noqa: BLE001
+        print(f"GEE classification features fetch failed: {exc}")
+        return None
 
 
-def fetch_ndvi_from_gee(
+def _one_year_earlier(day: date) -> date:
+    try:
+        return day.replace(year=day.year - 1)
+    except ValueError:  # 29 February
+        return day.replace(year=day.year - 1, day=28)
+
+
+def fetch_quarter_observation(
     coordinates: list[list[float]],
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict | None:
+    """Plot-average monitoring signals for a quarter and for the same window one year earlier.
+
+    `end_date` is inclusive. Without dates, the last 90 days are used. Returns None when
+    Earth Engine is unavailable; signals with no clear observations come back as None.
+    """
     if len(coordinates) < 3:
         return None
 
-    account = _load_service_account()
-    if account is None:
-        return None
-
     try:
-        import ee  # Lazy import so local setup can still run without GEE auth.
+        if not init_earth_engine():
+            return None
+        import ee
 
-        service_account_email, private_key = account
-        credentials = ee.ServiceAccountCredentials(service_account_email, key_data=private_key)
-        ee.Initialize(credentials, project=os.getenv("GEE_PROJECT"))
-
-        gee_coords = [[point[1], point[0]] for point in coordinates]
-        if gee_coords[0] != gee_coords[-1]:
-            gee_coords.append(gee_coords[0])
-        polygon = ee.Geometry.Polygon([gee_coords])
         if start_date and end_date:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date) + timedelta(days=1)
         else:
-            end_dt = datetime.now(timezone.utc)
-            start_dt = end_dt - timedelta(days=90)
+            end = datetime.now(timezone.utc).date() + timedelta(days=1)
+            start = end - timedelta(days=90)
+        previous_start, previous_end = _one_year_earlier(start), _one_year_earlier(end)
 
-        collection = (
-            ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(polygon)
-            .filterDate(start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
-        )
-        image_count = int(collection.size().getInfo())
-        if image_count == 0:
-            return None
+        polygon = _plot_polygon(coordinates)
 
-        image = collection.median()
-        ndvi_img = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
-        stats = ndvi_img.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=polygon,
-            scale=10,
-            maxPixels=1_000_000_000,
-            bestEffort=True,
-        )
-        ndvi_value = stats.get("NDVI").getInfo()
-        if ndvi_value is None:
-            return None
+        def plot_mean(window_start: date, window_end: date):
+            image = build_monitoring_image(window_start.isoformat(), window_end.isoformat(), polygon)
+            return image.reduceRegion(ee.Reducer.mean(), polygon, MONITOR_SCALE_M, maxPixels=1_000_000_000, bestEffort=True)
+
+        result = ee.Dictionary({
+            "current": plot_mean(start, end),
+            "previous": plot_mean(previous_start, previous_end),
+            "scenes": sentinel2_scenes(start.isoformat(), end.isoformat(), polygon).size(),
+        }).getInfo()
+
+        current = result["current"]
         return {
-            "ndvi": round(float(ndvi_value), 4),
-            "windowStart": start_dt.strftime("%Y-%m-%d"),
-            "windowEnd": end_dt.strftime("%Y-%m-%d"),
-            "geeImageCount": image_count,
+            "current": current,
+            "previous": result["previous"],
+            "ndvi": None if current.get("NDVI") is None else round(float(current["NDVI"]), 4),
+            "windowStart": start.isoformat(),
+            "windowEnd": (end - timedelta(days=1)).isoformat(),
+            "geeImageCount": int(result["scenes"]),
         }
     except Exception as exc:  # noqa: BLE001
-        print(f"GEE NDVI fetch failed: {exc}")
+        print(f"GEE quarterly observation fetch failed: {exc}")
         return None

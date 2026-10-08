@@ -1,0 +1,77 @@
+{
+  "trainedAt": "2026-10-08T14:21:36+00:00",
+  "sklearnVersion": "1.6.1",
+  "features": [
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B8",
+    "B11",
+    "B12",
+    "NDVI",
+    "NDWI",
+    "MNDWI",
+    "EVI",
+    "NDMI",
+    "VV",
+    "VH",
+    "VH_VV",
+    "elevation"
+  ],
+  "classes": [
+    "mangrove",
+    "other",
+    "saltmarsh",
+    "seagrass"
+  ],
+  "samples": 12525,
+  "samplesPerClass": {
+    "other": 8435,
+    "mangrove": 2000,
+    "saltmarsh": 1090,
+    "seagrass": 1000
+  },
+  "regions": [
+    "andaman",
+    "bhitarkanika",
+    "chilika",
+    "godavari",
+    "gulf_of_kutch",
+    "gulf_of_mannar",
+    "palk_bay",
+    "pichavaram_cauvery",
+    "rann_kutch_coast",
+    "sundarbans"
+  ],
+  "trustedClasses": [
+    "mangrove",
+    "other"
+  ],
+  "evaluation": {
+    "method": "leave-one-region-out",
+    "accuracy": 0.8262,
+    "macroF1": 0.5805,
+    "perClassF1": {
+      "mangrove": 0.8709,
+      "saltmarsh": 0.4834,
+      "seagrass": 0.0668,
+      "other": 0.901
+    },
+    "perRegionAccuracy": {
+      "andaman": 0.8013,
+      "bhitarkanika": 0.8408,
+      "chilika": 0.884,
+      "godavari": 0.8384,
+      "gulf_of_kutch": 0.7189,
+      "gulf_of_mannar": 0.8041,
+      "palk_bay": 0.7969,
+      "pichavaram_cauvery": 0.857,
+      "rann_kutch_coast": 0.9558,
+      "sundarbans": 0.872
+    },
+    "confidenceThreshold": 0.7,
+    "confidentShare": 0.8343,
+    "confidentAccuracy": 0.8665
+  }
+}

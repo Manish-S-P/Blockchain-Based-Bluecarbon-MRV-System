@@ -1,0 +1,42 @@
+ECOSYSTEM CLASSIFIER - LEAVE-ONE-REGION-OUT EVALUATION
+============================================================
+Trained at        : 2026-10-08T14:21:33+00:00
+Samples / regions : 12525 / 10
+Features          : B2, B3, B4, B5, B8, B11, B12, NDVI, NDWI, MNDWI, EVI, NDMI, VV, VH, VH_VV, elevation
+
+Per-pixel results (each region predicted by a model that never saw it):
+              precision    recall  f1-score   support
+
+    mangrove      0.809     0.943     0.871      2000
+   saltmarsh      0.757     0.355     0.483      1090
+    seagrass      0.149     0.043     0.067      1000
+       other      0.855     0.952     0.901      8435
+
+    accuracy                          0.826     12525
+   macro avg      0.643     0.573     0.581     12525
+weighted avg      0.783     0.826     0.793     12525
+
+Confusion matrix (rows = true, columns = predicted):
+              mangrove  saltmarsh   seagrass      other
+  mangrove        1885         60          0         55
+ saltmarsh         330        387          0        373
+  seagrass          15          6         43        936
+     other          99         58        245       8033
+
+Confidence >= 0.7: 83.4% of pixels, accuracy on those 0.866
+Below threshold (would go to manual review): 16.6%
+
+Trusted classes (held-out F1 >= 0.8, eligible for automatic accept/reject): mangrove, other
+Plots claimed or classified as any other class always go to manual review.
+
+Accuracy per held-out region:
+  andaman              0.801  (1515 samples)
+  bhitarkanika         0.841  (1250 samples)
+  chilika              0.884  (750 samples)
+  godavari             0.838  (1250 samples)
+  gulf_of_kutch        0.719  (1750 samples)
+  gulf_of_mannar       0.804  (1266 samples)
+  palk_bay             0.797  (1477 samples)
+  pichavaram_cauvery   0.857  (1000 samples)
+  rann_kutch_coast     0.956  (1017 samples)
+  sundarbans           0.872  (1250 samples)

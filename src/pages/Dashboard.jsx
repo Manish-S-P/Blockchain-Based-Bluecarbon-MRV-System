@@ -65,7 +65,7 @@ const KpiCard = ({ icon: Icon, label, value, gradient, iconBg }) => (
 );
 
 const Dashboard = () => {
-  const { account } = useWallet();
+  const { account, authFetch } = useWallet();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [totalArea, setTotalArea] = useState(0);
@@ -79,9 +79,25 @@ const Dashboard = () => {
   const [successLink, setSuccessLink] = useState(null);
 
   const avgNdvi = projects.length > 0
-    ? Number((projects.reduce((sum, p) => sum + (p.averageNdvi || 0), 0) / projects.length).toFixed(3))
+    ? Number((projects.reduce((sum, p) => {
+        if (sum === undefined) sum = 0;
+        if (p.averageNdvi) return sum + p.averageNdvi;
+        const cycles = p.monitoringCycles || [];
+        if (cycles.length > 0) {
+          return sum + (cycles.reduce((cSum, c) => cSum + (c.ndvi || 0), 0) / cycles.length);
+        }
+        return sum;
+      }, 0) / projects.length).toFixed(3))
     : 0;
   const selectedProject = projects.find((project) => project._id === selectedProjectId) || projects[0] || null;
+
+  const selectedCycles = selectedProject?.monitoringCycles || [];
+  const dynamicAvgNdvi = selectedCycles.length > 0
+    ? (selectedCycles.reduce((sum, c) => sum + (c.ndvi || 0), 0) / selectedCycles.length).toFixed(4)
+    : null;
+  const dynamicCredits = selectedCycles.length > 0
+    ? (selectedCycles.reduce((sum, c) => sum + (c.estimatedCo2Tonnes || 0), 0) / selectedCycles.length).toFixed(4)
+    : null;
 
   const getWorkflowSteps = (project) => {
     if (!project) return [];
@@ -123,7 +139,7 @@ const Dashboard = () => {
 
   const loadProjects = async () => {
     if (!account) return;
-    const res = await fetch('/api/projects/' + account);
+    const res = await authFetch('/api/projects/' + account);
     const data = await res.json();
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Unable to fetch projects');
@@ -136,9 +152,17 @@ const Dashboard = () => {
       setSelectedProjectId(data.projects[0]?._id || '');
     }
     const areaSum = data.projects.reduce((acc, p) => acc + (p.area || 0), 0);
-    const creditSum = data.projects.reduce((acc, p) => acc + (p.carbonCredits || 0), 0);
+    const creditSum = data.projects.reduce((acc, p) => {
+      if (p.carbonCredits) return acc + p.carbonCredits;
+      const cycles = p.monitoringCycles || [];
+      if (cycles.length > 0) {
+        const avgCycleCredit = cycles.reduce((sum, c) => sum + (c.estimatedCo2Tonnes || 0), 0) / cycles.length;
+        return acc + Number(avgCycleCredit);
+      }
+      return acc;
+    }, 0);
     setTotalArea(areaSum);
-    setTotalCredits(creditSum);
+    setTotalCredits(Number(creditSum.toFixed(2)));
   };
 
   const loadStatus = async () => {
@@ -158,7 +182,7 @@ const Dashboard = () => {
     setErrorMessage('');
     setSuccessLink(null);
     try {
-      const res = await fetch('/api/mrv/quarterly-run/' + plotId, { method: 'POST' });
+      const res = await authFetch('/api/mrv/quarterly-run/' + plotId, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Quarterly MRV failed');
@@ -178,7 +202,7 @@ const Dashboard = () => {
     setErrorMessage('');
     setSuccessLink(null);
     try {
-      const res = await fetch('/api/mrv/annual-finalize/' + plotId, { 
+      const res = await authFetch('/api/mrv/annual-finalize/' + plotId, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chain: mintOnAmoy ? 'amoy' : 'local' })
@@ -208,6 +232,7 @@ const Dashboard = () => {
         
         throw new Error(msg);
       }
+      await loadProjects();
       await loadStatus();
       if (data.txHash && data.txHash.startsWith('0x') && mintOnAmoy) {
         setSuccessLink(data.txHash);
@@ -227,7 +252,7 @@ const Dashboard = () => {
     setErrorMessage('');
     try {
       for (let i = completed; i < 4; i += 1) {
-        const res = await fetch('/api/mrv/quarterly-run/' + proj.plotId, { method: 'POST' });
+        const res = await authFetch('/api/mrv/quarterly-run/' + proj.plotId, { method: 'POST' });
         const data = await res.json();
         if (!res.ok || !data.success) {
           throw new Error(data.error || 'Quarterly MRV run failed');
@@ -247,7 +272,7 @@ const Dashboard = () => {
     setActivePlotAction(proj.plotId + ':backfill');
     setErrorMessage('');
     try {
-      const res = await fetch('/api/mrv/backfill/' + proj.plotId, { method: 'POST' });
+      const res = await authFetch('/api/mrv/backfill/' + proj.plotId, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Historical backfill failed');
@@ -266,7 +291,7 @@ const Dashboard = () => {
     if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) return;
     setErrorMessage('');
     try {
-      const res = await fetch('/api/projects/' + projectId, { method: 'DELETE' });
+      const res = await authFetch('/api/projects/' + projectId, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to delete project');
@@ -466,7 +491,13 @@ const Dashboard = () => {
                 </div>
                 <div className="flex justify-between text-xs text-slate-500">
                   <span>{proj.area} Ha</span>
-                  <span className="font-medium text-slate-400">{proj.carbonCredits || 0} CC</span>
+                  <span className="font-medium text-slate-400">
+                    {proj.carbonCredits 
+                      ? `${proj.carbonCredits.toFixed(2)} CC` 
+                      : proj.monitoringCycles?.length > 0 
+                        ? `${(proj.monitoringCycles.reduce((sum, c) => sum + (c.estimatedCo2Tonnes || 0), 0) / proj.monitoringCycles.length).toFixed(2)} CC (Est.)`
+                        : '0 CC'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[10px] text-slate-600 font-mono">{proj.plotId || 'pending'}</span>
@@ -547,8 +578,8 @@ const Dashboard = () => {
                       { label: 'Plot ID', value: selectedProject.plotId || 'N/A', mono: true },
                       { label: 'Ecosystem', value: selectedProject.vegetationType, capitalize: true },
                       { label: 'Area', value: `${selectedProject.area} hectares` },
-                      { label: 'Avg NDVI', value: selectedProject.averageNdvi || '—' },
-                      { label: 'Carbon Credits', value: selectedProject.carbonCredits || '—' },
+                      { label: 'Avg NDVI', value: selectedProject.averageNdvi ? selectedProject.averageNdvi.toFixed(4) : (dynamicAvgNdvi ? `${dynamicAvgNdvi} (Current)` : '—') },
+                      { label: 'Carbon Credits', value: selectedProject.carbonCredits ? `${selectedProject.carbonCredits.toFixed(2)} CC` : (dynamicCredits ? `${Number(dynamicCredits).toFixed(2)} CC (Est.)` : '—') },
                       { label: 'Credit Token', value: selectedProject.creditTokenId || 'Not minted' },
                     ].map((item) => (
                       <div key={item.label} className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
@@ -572,7 +603,6 @@ const Dashboard = () => {
                       <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">ML Identification at Registration</p>
                       <p className="text-sm text-white capitalize">
                         {selectedProject.initialIdentifiedEcosystem}
-                        {selectedProject.initialEcosystemConfidence ? ` (${(selectedProject.initialEcosystemConfidence * 100).toFixed(1)}%)` : ''}
                       </p>
                     </div>
                   )}
@@ -732,16 +762,16 @@ const Dashboard = () => {
                                 Anomaly
                               </span>
                             )}
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cycle.ecosystemMatchesClaim ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border-amber-500/20'}`}>
-                              {cycle.ecosystemMatchesClaim ? 'Match' : 'Mismatch'}
-                            </span>
+                            {cycle.anomalyStatus === 'insufficient_data' && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-400 border border-slate-500/20">
+                                Not enough clear data
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           {[
-                            { label: 'NDVI', value: cycle.ndvi },
-                            { label: 'Ecosystem', value: cycle.identifiedEcosystem || 'N/A' },
-                            { label: 'Confidence', value: cycle.ecosystemConfidence ? `${(cycle.ecosystemConfidence * 100).toFixed(1)}%` : 'N/A' },
+                            { label: 'NDVI', value: cycle.ndvi ?? 'Cloudy' },
                             { label: 'Est. CO₂', value: `${cycle.estimatedCo2Tonnes} t` },
                           ].map(item => (
                             <div key={item.label} className="bg-white/[0.03] rounded-lg p-2 border border-white/[0.04]">

@@ -2,3 +2,6 @@ fastapi==0.116.1
 uvicorn[standard]==0.35.0
 numpy==2.3.2
 earthengine-api==1.1.4
+joblib==1.4.2
+scikit-learn==1.6.1
+pandas==2.2.3

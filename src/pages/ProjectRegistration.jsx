@@ -18,7 +18,7 @@ const ecosystemOptions = [
 ];
 
 const ProjectRegistration = () => {
-  const { account } = useWallet();
+  const { account, authFetch } = useWallet();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -29,7 +29,6 @@ const ProjectRegistration = () => {
   const [coordinates, setCoordinates] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [txnHash, setTxnHash] = useState('');
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -47,16 +46,16 @@ const ProjectRegistration = () => {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/projects', {
+      const response = await authFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, coordinates, walletAddress: account })
+        body: JSON.stringify({ ...formData, coordinates })
       });
       const data = await response.json();
 
       if (response.ok && data.success) {
         setTxnHash(data.registerTxHash || '');
-        setShowSuccessModal(true);
+        navigate('/dashboard');
       } else {
         let msg = data.error || 'Unknown server error';
         // Clean up verbose ethers errors
@@ -67,7 +66,7 @@ const ProjectRegistration = () => {
           msg = msg.split('execution reverted:')[1].split('(')[0].trim();
         }
         
-        if (msg.toLowerCase().includes('insufficient funds') || msg.toLowerCase().includes('reverted')) {
+        if (msg.toLowerCase().includes('insufficient funds')) {
           msg = '⚠️ Insufficient Gas Funds on Amoy! Please add testnet MATIC to your wallet.';
         }
 
@@ -306,13 +305,6 @@ const ProjectRegistration = () => {
         </form>
       </div>
 
-      <SuccessModal
-        isOpen={showSuccessModal}
-        onClose={() => navigate('/dashboard')}
-        title="Deployed to Amoy!"
-        message="Your project has been successfully registered on the Polygon Amoy testnet. All land data and ecosystem metrics have been secured on-chain."
-        txHash={txnHash}
-      />
     </div>
   );
 };

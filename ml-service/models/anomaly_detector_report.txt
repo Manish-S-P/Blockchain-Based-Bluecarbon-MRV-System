@@ -1,0 +1,22 @@
+ANOMALY DETECTOR - CALIBRATION AND EVALUATION
+============================================================
+Trained at: 2026-10-08T14:46:19+00:00
+Method: same-quarter year-on-year change, robust z-score per signal, combined per ecosystem (mangrove: max, saltmarsh: mean, seagrass: mean);
+threshold = 95% quantile of healthy calibration plots' worst quarter
+
+Learned parameters (typical change / spread per signal, threshold):
+  mangrove  NDVI: +0.0014 / 0.0647, VH: -0.0488 / 0.9131  | threshold 3.67  (960 plots)
+  saltmarsh NDVI: +0.0351 / 0.1216, NDMI: +0.0156 / 0.0789  | threshold 2.36  (570 plots)
+  seagrass  B2: +0.0001 / 0.0138, B3: -0.0011 / 0.0147  | threshold 3.75  (480 plots)
+
+Evaluation (plot-year flagged if any 2021 quarter is an anomaly):
+                                                            max                mean                used
+  Real mangrove loss detected (MM, ID)             90.0% of 400        85.3% of 400        90.0% of 400
+  Intact mangroves wrongly blocked (MM, ID)         9.5% of 400         9.0% of 400         9.5% of 400
+  Healthy mangrove wrongly blocked (held-out)        1.3% of 150         3.3% of 150         1.3% of 150
+  Healthy saltmarsh wrongly blocked (held-out)        39.7% of 73         13.7% of 73         13.7% of 73
+  Healthy seagrass wrongly blocked (held-out)        12.0% of 50         12.0% of 50         12.0% of 50
+
+max  = any one signal can raise the alarm; mean = the signals must agree on damage;
+used = the per-ecosystem choice saved for the API.
+No public loss map exists for saltmarsh or seagrass, so their detection rate is not measured.

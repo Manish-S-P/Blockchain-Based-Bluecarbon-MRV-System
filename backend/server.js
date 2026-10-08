@@ -1,4 +1,3 @@
-console.log("🔥 MY SERVER FILE IS RUNNING");
 require('dotenv').config({ path: `${__dirname}/.env` });
 const express = require('express');
 const mongoose = require('mongoose');
@@ -7,12 +6,15 @@ const Project = require('./models/Project');
 const { runMrvModels } = require('./services/mlService');
 const { uploadMrvReportToIpfs } = require('./services/ipfsService');
 const { registerPlotOnChain, mintCreditOnChain } = require('./services/blockchainService');
-const { DEFAULT_TIME_YEARS, CONTRACT_TOLERANCE, calculateExpectedCredits, ECOSYSTEM_SAFETY_BASELINES } = require('./services/credits');
+const { ECOSYSTEM_CARBON_DENSITY, calculateExpectedCredits } = require('./services/credits');
+const { isWalletAddress, createLoginChallenge, verifyLoginSignature, requireAuth } = require('./services/auth');
 
 const app = express();
 let dbConnected = false;
 
-app.use(cors());
+// The Vite dev server proxies /api, so cross-origin access is only needed when CORS_ORIGIN is set.
+const corsOrigins = (process.env.CORS_ORIGIN || '').split(',').map((origin) => origin.trim()).filter(Boolean);
+app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : false }));
 app.use(express.json());
 
 if (!process.env.MONGODB_URI) {
@@ -37,8 +39,6 @@ const ensureDbConnected = (req, res, next) => {
 };
 
 const createPlotId = () => `PLOT-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-const safeRandom = (min, max) => Number((Math.random() * (max - min) + min).toFixed(4));
 
 const isConfigured = (value) => Boolean(value && String(value).trim().length > 0);
 
@@ -137,11 +137,51 @@ const getLastCompletedQuarterWindows = (count = 4) => {
   return windows;
 };
 
-console.log("Before route");
+const SUPPORTED_ECOSYSTEMS = new Set(Object.keys(ECOSYSTEM_CARBON_DENSITY));
+const SUPPORTED_CHAINS = new Set(['local', 'amoy']);
+const MIN_CYCLES_WITH_DATA = 2;
 
-app.post('/api/projects', ensureDbConnected, async (req, res) => {
-  console.log("🔥 POST ROUTE HIT");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const walletQuery = (address) => ({ walletAddress: new RegExp(`^${escapeRegex(address)}$`, 'i') });
+
+// Loads a project by plotId and confirms it belongs to the authenticated wallet.
+const findOwnedProject = async (req, res, filter) => {
+  const project = await Project.findOne(filter);
+  if (!project) {
+    res.status(404).json({ success: false, error: 'Project not found' });
+    return null;
+  }
+  if (project.walletAddress.toLowerCase() !== req.walletAddress) {
+    res.status(403).json({ success: false, error: 'This project belongs to a different wallet' });
+    return null;
+  }
+  return project;
+};
+
+app.post('/api/auth/nonce', (req, res) => {
   try {
+    res.status(200).json({ success: true, message: createLoginChallenge(req.body?.address) });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/auth/verify', (req, res) => {
+  try {
+    const token = verifyLoginSignature(req.body?.address, req.body?.signature);
+    res.status(200).json({ success: true, token });
+  } catch (err) {
+    res.status(401).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/projects', ensureDbConnected, requireAuth, async (req, res) => {
+  try {
+    const vegetationType = String(req.body.vegetationType || '').toLowerCase();
+    if (!SUPPORTED_ECOSYSTEMS.has(vegetationType)) {
+      return res.status(400).json({ success: false, error: 'vegetationType must be mangrove, seagrass, or saltmarsh' });
+    }
+
     const mappedCoordinates = Array.isArray(req.body.coordinates) ? req.body.coordinates : [];
     const isMapLandMethod = req.body.landMethod === 'map';
     const computedMapArea = isMapLandMethod ? computePolygonAreaHectares(mappedCoordinates) : 0;
@@ -154,43 +194,59 @@ app.post('/api/projects', ensureDbConnected, async (req, res) => {
     const resolvedArea = isMapLandMethod
       ? computedMapArea
       : Number(req.body.area || 0);
+    if (!Number.isFinite(resolvedArea) || resolvedArea <= 0) {
+      return res.status(400).json({ success: false, error: 'Plot area must be a positive number of hectares' });
+    }
 
     const candidateProject = {
       plotId: createPlotId(),
-      walletAddress: req.body.walletAddress,
+      walletAddress: req.walletAddress,
       coordinates: mappedCoordinates,
-      vegetationType: req.body.vegetationType,
+      vegetationType,
       area: resolvedArea,
       monitoringCycles: [],
     };
     const ecosystemCheck = await runMrvModels(candidateProject, {
-      strictRealData: false,
+      strictRealData: strictRealDataEnabled(),
     });
-    const allowedEcosystems = new Set(['mangrove', 'seagrass', 'saltmarsh']);
-    if (!allowedEcosystems.has(ecosystemCheck.identifiedEcosystem)) {
+    // The classifier decides what the plot is before looking at the claim; see ml-service/app/classifier.py.
+    if (ecosystemCheck.classificationDecision !== 'accept') {
+      const identified = ecosystemCheck.identifiedEcosystem;
+      const confidencePct = Math.round((ecosystemCheck.ecosystemConfidence || 0) * 100);
+      let error;
+      if (identified === 'unknown') {
+        error = 'Satellite data for this plot could not be retrieved, so its ecosystem could not be verified. Please try again later.';
+      } else if (identified === vegetationType) {
+        error = `The satellite data suggests "${identified}", but only with ${confidencePct}% confidence. Please redraw the plot boundary more tightly around the ${vegetationType} area and try again.`;
+      } else if (SUPPORTED_ECOSYSTEMS.has(identified)) {
+        error = `The satellite data shows this plot is "${identified}" (${confidencePct}% confidence), not "${vegetationType}". Please check your plot boundary or ecosystem type.`;
+      } else {
+        error = `The satellite data shows this plot is not a supported blue-carbon ecosystem (identified as "${identified}"). We support mangrove, seagrass and saltmarsh.`;
+      }
       return res.status(400).json({
         success: false,
-        error: `Registration failed because this plot was identified as "${ecosystemCheck.identifiedEcosystem}". We currently only support mangrove, seagrass, or saltmarsh ecosystems.`,
-        identifiedEcosystem: ecosystemCheck.identifiedEcosystem,
+        error,
+        identifiedEcosystem: identified,
         ecosystemConfidence: ecosystemCheck.ecosystemConfidence,
+        classProbabilities: ecosystemCheck.classProbabilities,
       });
     }
-    if (!ecosystemCheck.ecosystemMatchesClaim) {
-      return res.status(400).json({
-        success: false,
-        error: `The identified ecosystem ("${ecosystemCheck.identifiedEcosystem}") does not match your selection ("${candidateProject.vegetationType}"). Please verify your plot boundaries or ecosystem type.`,
-        identifiedEcosystem: ecosystemCheck.identifiedEcosystem,
-        ecosystemConfidence: ecosystemCheck.ecosystemConfidence,
-      });
-    }
-
     const project = new Project({
-      ...req.body,
-      coordinates: mappedCoordinates,
-      area: candidateProject.area,
       plotId: candidateProject.plotId,
+      walletAddress: candidateProject.walletAddress,
+      name: req.body.name,
+      phone: req.body.phone,
+      address: req.body.address,
+      aadhar: req.body.aadhar,
+      landMethod: req.body.landMethod,
+      rtcNumber: req.body.rtcNumber,
+      coordinates: mappedCoordinates,
+      vegetationType,
+      area: candidateProject.area,
       initialIdentifiedEcosystem: ecosystemCheck.identifiedEcosystem,
       initialEcosystemConfidence: ecosystemCheck.ecosystemConfidence,
+      initialClassificationDecision: ecosystemCheck.classificationDecision,
+      initialClassProbabilities: ecosystemCheck.classProbabilities,
       status: 'Registered',
     });
     const registerResult = await registerPlotOnChain({
@@ -207,8 +263,6 @@ app.post('/api/projects', ensureDbConnected, async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 });
-
-console.log("After route");
 
 app.get('/api/system/status', (req, res) => {
   res.status(200).json({
@@ -228,33 +282,36 @@ app.get('/api/system/status', (req, res) => {
   });
 });
 
-app.get('/api/projects/:walletAddress', ensureDbConnected, async (req, res) => {
+app.get('/api/projects/:walletAddress', ensureDbConnected, requireAuth, async (req, res) => {
   try {
-    const projects = await Project.find({ walletAddress: req.params.walletAddress });
+    if (!isWalletAddress(req.params.walletAddress) || req.params.walletAddress.toLowerCase() !== req.walletAddress) {
+      return res.status(403).json({ success: false, error: 'You can only view your own projects' });
+    }
+    const projects = await Project.find(walletQuery(req.walletAddress));
     res.status(200).json({ success: true, projects });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.delete('/api/projects/:id', ensureDbConnected, async (req, res) => {
+app.delete('/api/projects/:id', ensureDbConnected, requireAuth, async (req, res) => {
   try {
-    const project = await Project.findByIdAndDelete(req.params.id);
-    if (!project) {
+    if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
+    const project = await findOwnedProject(req, res, { _id: req.params.id });
+    if (!project) return;
+    await project.deleteOne();
     res.status(200).json({ success: true, message: 'Project deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.post('/api/mrv/quarterly-run/:plotId', ensureDbConnected, async (req, res) => {
+app.post('/api/mrv/quarterly-run/:plotId', ensureDbConnected, requireAuth, async (req, res) => {
   try {
-    const project = await Project.findOne({ plotId: req.params.plotId });
-    if (!project) {
-      return res.status(404).json({ success: false, error: 'Project not found for plotId' });
-    }
+    const project = await findOwnedProject(req, res, { plotId: req.params.plotId });
+    if (!project) return;
 
     if (project.monitoringCycles.length >= 4) {
       return res.status(400).json({ success: false, error: '4 monitoring cycles already completed' });
@@ -307,12 +364,10 @@ app.post('/api/mrv/quarterly-run/:plotId', ensureDbConnected, async (req, res) =
   }
 });
 
-app.post('/api/mrv/backfill/:plotId', ensureDbConnected, async (req, res) => {
+app.post('/api/mrv/backfill/:plotId', ensureDbConnected, requireAuth, async (req, res) => {
   try {
-    const project = await Project.findOne({ plotId: req.params.plotId });
-    if (!project) {
-      return res.status(404).json({ success: false, error: 'Project not found for plotId' });
-    }
+    const project = await findOwnedProject(req, res, { plotId: req.params.plotId });
+    if (!project) return;
 
     if (project.monitoringCycles.length > 0) {
       return res.status(400).json({ success: false, error: 'Backfill only allowed before first cycle is added' });
@@ -325,7 +380,7 @@ app.post('/api/mrv/backfill/:plotId', ensureDbConnected, async (req, res) => {
       const cycleMetrics = await runMrvModels(project, {
         startDate: window.startDate,
         endDate: window.endDate,
-        strictRealData: false,
+        strictRealData: strictRealDataEnabled(),
       });
       const cycle = {
         cycleNumber: project.monitoringCycles.length + 1,
@@ -350,12 +405,10 @@ app.post('/api/mrv/backfill/:plotId', ensureDbConnected, async (req, res) => {
   }
 });
 
-app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, async (req, res) => {
+app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, async (req, res) => {
   try {
-    const project = await Project.findOne({ plotId: req.params.plotId });
-    if (!project) {
-      return res.status(404).json({ success: false, error: 'Project not found for plotId' });
-    }
+    const project = await findOwnedProject(req, res, { plotId: req.params.plotId });
+    if (!project) return;
 
     if (project.monitoringCycles.length < 4) {
       return res.status(400).json({
@@ -364,32 +417,49 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, async (req, res)
       });
     }
 
-    const ndviValues = project.monitoringCycles.map(cycle => cycle.ndvi);
-    const averageNdvi = Number((ndviValues.reduce((sum, current) => sum + current, 0) / ndviValues.length).toFixed(4));
-    
-    const cycleEstimates = project.monitoringCycles.map(c => c.estimatedCo2Tonnes || 0);
-    let expectedCredits = Number((cycleEstimates.reduce((sum, val) => sum + val, 0) / cycleEstimates.length).toFixed(4));
-
-    const NDVI_THRESHOLD = 0.45;
-    const baselineRate = ECOSYSTEM_SAFETY_BASELINES[project.vegetationType?.toLowerCase()] || 5;
-    
-    if (averageNdvi >= NDVI_THRESHOLD && expectedCredits < (project.area * baselineRate)) {
-      const baseline = project.area * baselineRate;
-      console.log(`[MRV] Safety Net Triggered for Plot ${project.plotId} (${project.vegetationType}). Avg NDVI: ${averageNdvi}, Credits: ${expectedCredits} -> ${baseline}`);
-      expectedCredits = baseline;
+    const network = req.body?.chain || 'local';
+    if (!SUPPORTED_CHAINS.has(network)) {
+      return res.status(400).json({ success: false, error: 'chain must be "local" or "amoy"' });
     }
-    
-    const submittedCredits = Number((expectedCredits * (1 + safeRandom(-0.01, 0.01))).toFixed(4));
+    if (project.creditTokenId) {
+      return res.status(400).json({ success: false, error: 'Credits have already been minted for this plot' });
+    }
 
-    const deviation = Math.abs(submittedCredits - expectedCredits) / expectedCredits;
-    if (deviation > CONTRACT_TOLERANCE) {
+    const ndviValues = project.monitoringCycles.map((cycle) => cycle.ndvi).filter((ndvi) => typeof ndvi === 'number');
+    const averageNdvi = ndviValues.length > 0
+      ? Number((ndviValues.reduce((sum, current) => sum + current, 0) / ndviValues.length).toFixed(4))
+      : null;
+
+    // Plot health is judged by the anomaly detector (year-on-year change per ecosystem), not by
+    // a fixed NDVI threshold, which would always fail underwater seagrass.
+    const cyclesWithData = project.monitoringCycles.filter((cycle) => cycle.anomalyStatus !== 'insufficient_data');
+    if (cyclesWithData.length < MIN_CYCLES_WITH_DATA) {
       return res.status(400).json({
         success: false,
-        error: 'Submitted credits outside 5% contract tolerance',
-        expectedCredits,
-        submittedCredits,
+        error: `Only ${cyclesWithData.length} of 4 quarters had enough clear satellite data to check the plot. At least ${MIN_CYCLES_WITH_DATA} are needed to mint credits.`,
       });
     }
+
+    const anomalousCycles = project.monitoringCycles.filter((cycle) => cycle.anomalyDetected);
+    if (anomalousCycles.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Anomalies were detected in cycle(s) ${anomalousCycles.map((cycle) => cycle.cycleNumber).join(', ')}. Credits cannot be minted until the plot is reviewed.`,
+      });
+    }
+
+    const mismatchedCycles = project.monitoringCycles.filter((cycle) => !cycle.ecosystemMatchesClaim);
+    if (mismatchedCycles.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Satellite classification did not match the claimed ecosystem in cycle(s) ${mismatchedCycles.map((cycle) => cycle.cycleNumber).join(', ')}. Credits cannot be minted.`,
+      });
+    }
+
+    // Credits follow the smart contract's density-based policy formula exactly, so the
+    // on-chain tolerance check passes deterministically.
+    const expectedCredits = calculateExpectedCredits(project);
+    const submittedCredits = expectedCredits;
 
     const reportPayload = {
       plotId: project.plotId,
@@ -410,14 +480,14 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, async (req, res)
       walletAddress: project.walletAddress,
       submittedCredits,
       reportIpfsHash: ipfsHash,
-      network: req.body?.chain || 'local',
+      network,
       area: project.area,
       vegetationType: project.vegetationType,
     });
 
     project.averageNdvi = averageNdvi;
     project.reportIpfsHash = ipfsHash;
-    project.contractVerified = true;
+    project.contractVerified = mintResult.onChain;
     project.creditTokenId = mintResult.tokenId;
     project.mintTxHash = mintResult.txHash || '';
     project.carbonCredits = submittedCredits;

@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 backend/.env
 ml-service/keys/*.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Hardhat build cache
+blockchain/cache/

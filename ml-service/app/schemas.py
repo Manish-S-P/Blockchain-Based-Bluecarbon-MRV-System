@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 class PreviousCycle(BaseModel):
     cycleNumber: int
-    ndvi: float
+    ndvi: float | None = None
     anomalyDetected: bool | None = None
 
 
@@ -19,11 +19,17 @@ class MlvInferRequest(BaseModel):
 
 
 class MlvInferResponse(BaseModel):
-    ndvi: float
+    ndvi: float | None
     ecosystemMatchesClaim: bool
     identifiedEcosystem: str
     ecosystemConfidence: float
+    classificationDecision: str  # "accept" | "reject"
+    classProbabilities: dict[str, float] = Field(default_factory=dict)
+    classifiedPixels: int = 0
     anomalyDetected: bool
+    anomalyStatus: str  # "normal" | "anomaly" | "insufficient_data"
+    anomalyScore: float | None = None
+    anomalySignals: dict[str, float] = Field(default_factory=dict)
     estimatedCo2Tonnes: float
     source: str
     windowStart: str | None = None

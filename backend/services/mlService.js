@@ -16,7 +16,10 @@ const fallbackMrvModels = (project) => {
     ecosystemMatchesClaim,
     identifiedEcosystem,
     ecosystemConfidence,
+    classificationDecision: ecosystemMatchesClaim ? 'accept' : 'reject',
+    classProbabilities: {},
     anomalyDetected,
+    anomalyStatus: anomalyDetected ? 'anomaly' : 'normal',
     estimatedCo2Tonnes,
     source: 'fallback-simulation',
   };
@@ -66,11 +69,15 @@ const runMrvModels = async (project, options = {}) => {
 
         const data = await response.json();
         return {
-          ndvi: Number(data.ndvi),
+          ndvi: data.ndvi === null || data.ndvi === undefined ? null : Number(data.ndvi),
           ecosystemMatchesClaim: Boolean(data.ecosystemMatchesClaim),
           identifiedEcosystem: data.identifiedEcosystem || 'unknown',
           ecosystemConfidence: Number(data.ecosystemConfidence || 0),
+          classificationDecision: data.classificationDecision || 'reject',
+          classProbabilities: data.classProbabilities || {},
           anomalyDetected: Boolean(data.anomalyDetected),
+          anomalyStatus: data.anomalyStatus || 'insufficient_data',
+          anomalyScore: data.anomalyScore ?? null,
           estimatedCo2Tonnes: Number(data.estimatedCo2Tonnes),
           source: data.source || 'ml-service',
           windowStart: data.windowStart || options.startDate || '',
