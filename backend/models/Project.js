@@ -42,6 +42,7 @@ const projectSchema = new mongoose.Schema({
   creditTokenId: { type: String, default: '' },
   registerTxHash: { type: String, default: '' },
   mintTxHash: { type: String, default: '' },
+  mintNetwork: { type: String, default: '' }, // local | amoy
   contractVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });

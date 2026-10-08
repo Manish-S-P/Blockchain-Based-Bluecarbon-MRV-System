@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 
 const WalletContext = createContext();
 
@@ -90,17 +90,27 @@ export const WalletProvider = ({ children }) => {
     setAccount(null);
   };
 
+  const pendingSignIn = useRef(null);
+
   // Proves wallet ownership to the backend by signing a one-time login message.
-  const signIn = useCallback(async () => {
-    const address = account.toLowerCase();
-    const { message } = await postJson('/api/auth/nonce', { address });
-    const signature = await window.ethereum.request({
-      method: 'personal_sign',
-      params: [message, address],
-    });
-    const { token } = await postJson('/api/auth/verify', { address, signature });
-    storeToken(address, token);
-    return token;
+  // Concurrent callers share one sign-in: a second nonce request would invalidate the first.
+  const signIn = useCallback(() => {
+    if (!pendingSignIn.current) {
+      const address = account.toLowerCase();
+      pendingSignIn.current = (async () => {
+        const { message } = await postJson('/api/auth/nonce', { address });
+        const signature = await window.ethereum.request({
+          method: 'personal_sign',
+          params: [message, address],
+        });
+        const { token } = await postJson('/api/auth/verify', { address, signature });
+        storeToken(address, token);
+        return token;
+      })().finally(() => {
+        pendingSignIn.current = null;
+      });
+    }
+    return pendingSignIn.current;
   }, [account]);
 
   // fetch() wrapper that attaches the wallet session token, signing in when needed.

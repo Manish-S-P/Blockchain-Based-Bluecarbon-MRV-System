@@ -18,8 +18,8 @@ const Navbar = () => {
   };
 
   const navLinks = [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/register', label: 'Register', icon: <PlusCircle className="w-4 h-4" /> },
+    { to: '/dashboard', label: 'My plots' },
+    { to: '/register', label: 'Add a plot', icon: <PlusCircle className="w-4 h-4" /> },
   ];
 
   return (
@@ -32,7 +32,7 @@ const Navbar = () => {
               <Leaf className="h-7 w-7 text-emerald-400 relative" />
             </div>
             <span className="text-white font-bold text-lg tracking-tight">
-              Blue Carbon<span className="text-emerald-400 ml-1">MRV</span>
+              Blue Carbon<span className="text-emerald-400 ml-1">Registry</span>
             </span>
           </Link>
 
@@ -43,7 +43,7 @@ const Navbar = () => {
                   <Link
                     key={link.to}
                     to={link.to}
-                    className="text-slate-400 hover:text-white px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-white/[0.06] flex items-center gap-1.5"
+                    className="text-slate-300 hover:text-white px-3.5 py-2 rounded-lg font-medium transition-colors hover:bg-white/[0.06] flex items-center gap-1.5"
                   >
                     {link.icon}
                     {link.label}
@@ -52,8 +52,8 @@ const Navbar = () => {
 
                 <button
                   onClick={copyAddress}
-                  className="glass-card flex items-center gap-2.5 px-3.5 py-1.5 text-sm cursor-pointer hover:bg-white/[0.08] transition-all duration-200 group"
-                  title="Click to copy address"
+                  className="card flex items-center gap-2.5 px-3.5 py-1.5 text-sm cursor-pointer hover:bg-white/[0.08] transition-colors group"
+                  title="Your wallet address. Click to copy."
                 >
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -71,16 +71,16 @@ const Navbar = () => {
 
                 <button
                   onClick={() => { disconnect(); navigate('/'); }}
-                  className="p-2 text-slate-500 hover:text-rose-400 transition-colors duration-200 hover:bg-white/[0.06] rounded-lg"
-                  title="Disconnect Wallet"
+                  className="flex items-center gap-1.5 px-3 py-2 text-slate-300 hover:text-rose-300 transition-colors hover:bg-white/[0.06] rounded-lg"
                 >
-                  <LogOut className="h-4.5 w-4.5" />
+                  <LogOut className="h-4 w-4" />
+                  Log out
                 </button>
               </>
             ) : (
               <button
                 onClick={connectWallet}
-                className="btn-primary px-5 py-2 text-sm glow-emerald"
+                className="btn-primary px-5 py-2 text-sm"
               >
                 Connect Wallet
               </button>
@@ -126,7 +126,7 @@ const Navbar = () => {
                   className="flex items-center gap-2 text-rose-400 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/[0.06] transition-colors w-full"
                 >
                   <LogOut className="h-4 w-4" />
-                  Disconnect
+                  Log out
                 </button>
               </>
             ) : (

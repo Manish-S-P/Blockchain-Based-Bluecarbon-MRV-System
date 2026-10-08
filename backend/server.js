@@ -215,13 +215,13 @@ app.post('/api/projects', ensureDbConnected, requireAuth, async (req, res) => {
       const confidencePct = Math.round((ecosystemCheck.ecosystemConfidence || 0) * 100);
       let error;
       if (identified === 'unknown') {
-        error = 'Satellite data for this plot could not be retrieved, so its ecosystem could not be verified. Please try again later.';
+        error = 'We could not get satellite images for this plot right now, so it could not be checked. Please try again later.';
       } else if (identified === vegetationType) {
-        error = `The satellite data suggests "${identified}", but only with ${confidencePct}% confidence. Please redraw the plot boundary more tightly around the ${vegetationType} area and try again.`;
+        error = `The satellite images suggest ${identified}, but only with ${confidencePct}% confidence, which is not enough. Please redraw the boundary more tightly around the ${vegetationType} area and try again.`;
       } else if (SUPPORTED_ECOSYSTEMS.has(identified)) {
-        error = `The satellite data shows this plot is "${identified}" (${confidencePct}% confidence), not "${vegetationType}". Please check your plot boundary or ecosystem type.`;
+        error = `The satellite images show ${identified} (${confidencePct}% confidence), not ${vegetationType}. Please check your plot boundary or the ecosystem you chose.`;
       } else {
-        error = `The satellite data shows this plot is not a supported blue-carbon ecosystem (identified as "${identified}"). We support mangrove, seagrass and saltmarsh.`;
+        error = `The satellite images show that this plot is not mangrove, seagrass or saltmarsh. It looks like other land or open water (${confidencePct}% confidence).`;
       }
       return res.status(400).json({
         success: false,
@@ -490,6 +490,7 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
     project.contractVerified = mintResult.onChain;
     project.creditTokenId = mintResult.tokenId;
     project.mintTxHash = mintResult.txHash || '';
+    project.mintNetwork = network;
     project.carbonCredits = submittedCredits;
     project.status = 'Credit Minted';
     await project.save();
