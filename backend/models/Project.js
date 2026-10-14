@@ -13,6 +13,8 @@ const monitoringCycleSchema = new mongoose.Schema({
   anomalyDetected: { type: Boolean, required: true },
   anomalyStatus: { type: String, default: '' }, // normal | anomaly | insufficient_data
   anomalyScore: { type: Number, default: null },
+  carbon: { type: mongoose.Schema.Types.Mixed, default: null },             // tree carbon now (t CO2/ha)
+  carbonPreviousYear: { type: mongoose.Schema.Types.Mixed, default: null }, // same pixels, same season, a year earlier
   estimatedCo2Tonnes: { type: Number, required: true },
   geeImageCount: { type: Number, default: 0 },
   source: { type: String, default: 'unknown' },
@@ -43,6 +45,7 @@ const projectSchema = new mongoose.Schema({
   registerTxHash: { type: String, default: '' },
   mintTxHash: { type: String, default: '' },
   mintNetwork: { type: String, default: '' }, // local | amoy
+  creditBreakdown: { type: mongoose.Schema.Types.Mixed, default: null }, // see services/credits.js
   contractVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });

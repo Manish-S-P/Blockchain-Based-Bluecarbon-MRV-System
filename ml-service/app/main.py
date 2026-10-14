@@ -1,78 +1,94 @@
-from datetime import date
+from datetime import timedelta
 
 from fastapi import FastAPI, HTTPException
 
 from .anomaly import AnomalyDetector, AnomalyResult
+from .carbon import CarbonEstimate, CarbonModel
 from .classifier import EcosystemClassifier
-from .gee_service import fetch_plot_pixel_features, fetch_quarter_observation
-from .model_manager import ModelManager
-from .schemas import MlvInferRequest, MlvInferResponse
+from .gee_service import fetch_plot_pixels, fetch_quarter_observation, resolve_window, window_quarter
+from .schemas import CarbonOut, MlvInferRequest, MlvInferResponse
 
-app = FastAPI(title="Blue Carbon ML Service", version="1.0.0")
-manager = ModelManager()
+app = FastAPI(title="Blue Carbon ML Service", version="2.0.0")
 classifier = EcosystemClassifier()
 anomaly_detector = AnomalyDetector()
-
-# Placeholder NDVI used only when GEE is unavailable and strict mode is off.
-DEFAULT_NDVI = 0.45
+carbon_model = CarbonModel()
 
 
 @app.get("/health")
 def health() -> dict[str, str | bool]:
-    return {"status": "ok", "classifierLoaded": classifier.available, "anomalyDetectorLoaded": anomaly_detector.available}
+    return {
+        "status": "ok",
+        "classifierLoaded": classifier.available,
+        "anomalyDetectorLoaded": anomaly_detector.available,
+        "carbonModelLoaded": carbon_model.available,
+    }
+
+
+def _carbon_out(estimate: CarbonEstimate) -> CarbonOut:
+    return CarbonOut(
+        status=estimate.status,
+        treeCo2=estimate.co2_t_ha,
+        treeCo2Above=estimate.co2_above_t_ha,
+        treeCo2Below=estimate.co2_below_t_ha,
+        canopyHeight=estimate.height_m,
+        biomass=estimate.agb_t_ha,
+        mangroveCover=estimate.mangrove_cover,
+        applicableShare=estimate.applicable_share,
+        climateZone=estimate.climate_zone,
+        pixels=estimate.pixels,
+        explanation=estimate.explanation,
+    )
 
 
 @app.post("/mrv/infer", response_model=MlvInferResponse)
 def infer(req: MlvInferRequest) -> MlvInferResponse:
-    previous_ndvis = [cycle.ndvi for cycle in req.previousCycles if cycle.ndvi is not None]
-    observed = fetch_quarter_observation(
-        req.coordinates,
-        start_date=req.startDate,
-        end_date=req.endDate,
-    )
+    start, end = resolve_window(req.startDate, req.endDate)
+    observed = fetch_quarter_observation(req.coordinates, start_date=req.startDate, end_date=req.endDate)
+    pixels = fetch_plot_pixels(req.coordinates, start, end)
 
-    # Classification uses the 12 months up to the end of this cycle (or today at registration).
-    as_of = date.fromisoformat(req.endDate) if req.endDate else date.today()
-    pixels = fetch_plot_pixel_features(req.coordinates, as_of)
-
-    if req.strictRealData and not observed:
+    if req.strictRealData and not (observed and pixels):
         raise HTTPException(status_code=503, detail="Strict real-data mode enabled and GEE data unavailable")
-    if req.strictRealData and not (pixels and classifier.available):
-        raise HTTPException(status_code=503, detail="Strict real-data mode enabled and ecosystem classification unavailable")
-    if req.strictRealData and not anomaly_detector.available:
-        raise HTTPException(status_code=503, detail="Strict real-data mode enabled and anomaly detector not trained")
+    if req.strictRealData and not (classifier.available and anomaly_detector.available and carbon_model.available):
+        raise HTTPException(status_code=503, detail="Strict real-data mode enabled and a model is not trained")
 
-    classification = classifier.classify(pixels or [], req.vegetationType)
-    # Without GEE data (and strict mode off) there is nothing to compare, so no anomaly verdict.
+    annual = pixels["annual"] if pixels else []
+    classification = classifier.classify(annual, req.vegetationType)
     anomaly = (
         anomaly_detector.check(req.vegetationType, observed["current"], observed["previous"])
         if observed else AnomalyResult("insufficient_data")
     )
 
-    result = manager.infer(
-        vegetation_type=req.vegetationType,
-        area=req.area,
-        previous_ndvis=previous_ndvis,
-        ndvi=observed["ndvi"] if observed else DEFAULT_NDVI,
-        classification=classification,
-        anomaly_detected=anomaly.is_anomaly,
-        source="gee" if observed else "default-features",
-    )
+    # Tree carbon now and in the same season one year earlier, from the same pixels.
+    longitude = sum(p[1] for p in req.coordinates) / len(req.coordinates)
+    latitude = sum(p[0] for p in req.coordinates) / len(req.coordinates)
+    if pixels:
+        is_mangrove = classifier.pixel_is(annual, "mangrove")
+        quarter = window_quarter(start, end)
+        with_quarter = lambda rows: [{**row, "quarter": quarter} for row in rows]
+        carbon_now = carbon_model.estimate(with_quarter(pixels["current"]), is_mangrove, longitude, latitude)
+        carbon_prev = carbon_model.estimate(with_quarter(pixels["previous"]), is_mangrove, longitude, latitude,
+                                            explain=False)
+    else:
+        carbon_now = carbon_prev = CarbonEstimate("unavailable")
+
+    ndvi = observed["ndvi"] if observed else None
     return MlvInferResponse(
-        ndvi=result.ndvi,
-        ecosystemMatchesClaim=result.ecosystem_matches_claim,
-        identifiedEcosystem=result.identified_ecosystem,
-        ecosystemConfidence=result.ecosystem_confidence,
+        ndvi=ndvi,
+        ecosystemMatchesClaim=classification.identified_ecosystem == req.vegetationType.lower(),
+        identifiedEcosystem=classification.identified_ecosystem,
+        ecosystemConfidence=classification.confidence,
         classificationDecision=classification.decision,
         classProbabilities=classification.probabilities,
         classifiedPixels=classification.pixel_count,
-        anomalyDetected=result.anomaly_detected,
+        anomalyDetected=anomaly.is_anomaly,
         anomalyStatus=anomaly.status,
         anomalyScore=anomaly.score,
         anomalySignals=anomaly.signal_scores,
-        estimatedCo2Tonnes=result.estimated_co2_tonnes,
-        source=result.source,
-        windowStart=observed["windowStart"] if observed else req.startDate,
-        windowEnd=observed["windowEnd"] if observed else req.endDate,
+        carbon=_carbon_out(carbon_now),
+        carbonPreviousYear=_carbon_out(carbon_prev),
+        estimatedCo2Tonnes=round(carbon_now.co2_t_ha.get("mid", 0.0) * req.area, 2),
+        source="gee" if observed else "unavailable",
+        windowStart=start.isoformat(),
+        windowEnd=(end - timedelta(days=1)).isoformat(),
         geeImageCount=observed["geeImageCount"] if observed else 0,
     )

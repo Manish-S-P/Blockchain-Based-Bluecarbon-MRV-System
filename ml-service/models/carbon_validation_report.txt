@@ -1,0 +1,20 @@
+CARBON MODEL - INDEPENDENT COMPARISON (medians over mangrove pixels, Jan-Mar 2021)
+==============================================================================
+            region  pixels  our_height_m  tandemx_height_m  our_agb_t_ha  our_agb_p90_t_ha  simard_agb_t_ha  esa_cci_agb_t_ha  field_agb_t_ha
+        sundarbans     300           4.1               5.9          10.7              16.9             46.5              12.0             NaN
+      bhitarkanika     300           4.5               7.5          12.9              81.0             67.0              18.0          318.79
+          godavari     300           4.4               5.8          12.7              26.1             46.5              28.0             NaN
+pichavaram_cauvery     300           3.3               3.1           7.2              11.9              7.4              14.0             NaN
+     gulf_of_kutch     300           3.0               3.7           5.9              11.4             29.7               2.0             NaN
+  rann_kutch_coast     300           2.8               2.4           5.2               7.4              7.4              29.0             NaN
+    gulf_of_mannar     300           3.5               4.0           8.1              12.5              NaN               7.0             NaN
+          palk_bay     300           3.4               3.0           7.4              10.2             16.7               9.0             NaN
+           andaman     300          14.8              11.1         142.4             312.9            186.7              72.0             NaN
+mumbai_thane_creek     300           7.9               6.3          40.7              51.2             16.7               5.0             NaN
+       goa_mandovi     300           5.7               NaN          20.8              53.0              NaN              10.0             NaN
+  kochi_backwaters     300           5.2               NaN          17.7              33.0              NaN               9.0             NaN
+puttalam_sri_lanka     300           4.4               3.8          12.5              28.6             46.5              18.0             NaN
+     krishna_delta     300           3.4               3.2           7.4              11.2             29.7               9.0             NaN
+
+Field references:
+  bhitarkanika: Bhitarkanika stand biomass study (AGB 318.79 +/- 44.42 t/ha); https://ouci.dntb.gov.ua/en/works/4N6e2be4/

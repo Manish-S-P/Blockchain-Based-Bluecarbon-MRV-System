@@ -1,5 +1,3 @@
-const { BASE_RATE, DEFAULT_TIME_YEARS, ECOSYSTEM_CARBON_DENSITY } = require('./credits');
-
 const safeRandom = (min, max) => Number((Math.random() * (max - min) + min).toFixed(4));
 
 const fallbackMrvModels = (project) => {
@@ -8,8 +6,8 @@ const fallbackMrvModels = (project) => {
   const identifiedEcosystem = ecosystemMatchesClaim ? project.vegetationType : 'other';
   const ecosystemConfidence = ecosystemMatchesClaim ? 0.55 : 0.5;
   const anomalyDetected = Math.random() < 0.1;
-  const density = ECOSYSTEM_CARBON_DENSITY[project.vegetationType] || 1;
-  const estimatedCo2Tonnes = Number((project.area * BASE_RATE * density * DEFAULT_TIME_YEARS * ndvi).toFixed(4));
+  // No carbon estimate without the ML service, so a simulated plot can never earn credits.
+  const carbon = { status: 'unavailable' };
 
   return {
     ndvi,
@@ -20,7 +18,9 @@ const fallbackMrvModels = (project) => {
     classProbabilities: {},
     anomalyDetected,
     anomalyStatus: anomalyDetected ? 'anomaly' : 'normal',
-    estimatedCo2Tonnes,
+    estimatedCo2Tonnes: 0,
+    carbon,
+    carbonPreviousYear: carbon,
     source: 'fallback-simulation',
   };
 };
@@ -79,6 +79,8 @@ const runMrvModels = async (project, options = {}) => {
           anomalyStatus: data.anomalyStatus || 'insufficient_data',
           anomalyScore: data.anomalyScore ?? null,
           estimatedCo2Tonnes: Number(data.estimatedCo2Tonnes),
+          carbon: data.carbon || null,
+          carbonPreviousYear: data.carbonPreviousYear || null,
           source: data.source || 'ml-service',
           windowStart: data.windowStart || options.startDate || '',
           windowEnd: data.windowEnd || options.endDate || '',

@@ -8,8 +8,8 @@ const STEPS = ['About you', 'Draw your land', 'What grows there'];
 
 const ECOSYSTEMS = [
   { value: 'mangrove', label: 'Mangrove', icon: TreePine, description: 'Trees growing in salty coastal water, often with roots above the mud.' },
-  { value: 'seagrass', label: 'Seagrass', icon: Waves, description: 'Grass-like plants growing underwater in shallow sea.' },
-  { value: 'saltmarsh', label: 'Saltmarsh', icon: Leaf, description: 'Low grasses and shrubs on land flooded by the tide.' },
+  { value: 'seagrass', label: 'Seagrass', icon: Waves, description: 'Grass-like plants growing underwater in shallow sea.', comingSoon: true },
+  { value: 'saltmarsh', label: 'Saltmarsh', icon: Leaf, description: 'Low grasses and shrubs on land flooded by the tide.', comingSoon: true },
 ];
 
 const ECOSYSTEM_NAMES = { mangrove: 'Mangrove', seagrass: 'Seagrass', saltmarsh: 'Saltmarsh', other: 'Not a coastal ecosystem' };
@@ -181,10 +181,16 @@ const ProjectRegistration = () => {
                   return (
                     <label
                       key={eco.value}
-                      className={`cursor-pointer rounded-xl border-2 p-5 transition-colors ${selected ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 hover:border-white/25'}`}
+                      className={`rounded-xl border-2 p-5 transition-colors ${
+                        eco.comingSoon ? 'border-white/5 opacity-50 cursor-not-allowed'
+                          : selected ? 'cursor-pointer border-emerald-500 bg-emerald-500/10' : 'cursor-pointer border-white/10 hover:border-white/25'
+                      }`}
                     >
-                      <input type="radio" name="vegetationType" value={eco.value} checked={selected} onChange={handleChange} className="sr-only" />
-                      <eco.icon className={`w-7 h-7 mb-2 ${selected ? 'text-emerald-400' : 'text-slate-400'}`} />
+                      <input type="radio" name="vegetationType" value={eco.value} checked={selected} onChange={handleChange} disabled={eco.comingSoon} className="sr-only" />
+                      <div className="flex items-start justify-between">
+                        <eco.icon className={`w-7 h-7 mb-2 ${selected ? 'text-emerald-400' : 'text-slate-400'}`} />
+                        {eco.comingSoon && <span className="text-xs font-medium text-slate-300 border border-white/15 rounded-full px-2 py-0.5">Coming soon</span>}
+                      </div>
                       <p className="font-semibold text-white">{eco.label}</p>
                       <p className="text-sm text-slate-400 mt-1">{eco.description}</p>
                     </label>

@@ -24,6 +24,12 @@ export GEE_SERVICE_ACCOUNT_JSON_PATH="ml-service/keys/gee-service-account.json"
 If GEE auth or API access fails and `strictRealData` is false, the service falls back to
 placeholder features and labels the result `source: "default-features"`.
 
+## Scope
+
+The registry currently supports **mangroves only**. Seagrass and saltmarsh are planned future
+additions: the classifier still recognises them (so it can tell a farmer a plot looks like
+saltmarsh rather than mangrove), but the backend only registers mangrove plots.
+
 ## Ecosystem classifier
 
 The classifier decides what a plot really is (mangrove, saltmarsh, seagrass or other) from
@@ -78,6 +84,18 @@ Any anomaly in the year blocks minting; at least 2 of the 4 quarters must have u
 It is evaluated on real 2021 mangrove loss from Global Forest Watch (Myanmar, Indonesia) and on
 healthy plots in held-out regions; see `models/anomaly_detector_report.txt`.
 
+## Carbon model
+
+```bash
+.venv/bin/python -m training.build_height_dataset   # GEDI L2A heights + same-quarter Sentinel features
+.venv/bin/python -m training.train_height           # writes models/canopy_height_model.* + report
+.venv/bin/python -m training.validate_carbon        # independent comparison report
+```
+
+Each `/mrv/infer` response includes `carbon` (this quarter) and `carbonPreviousYear` (same pixels,
+same season, one year earlier): tree CO2 in t/ha with a 90% range, above/below-ground split,
+canopy height, mangrove cover, area-of-applicability share and SHAP drivers.
+
 ## Endpoint contract
 
 - `POST /mrv/infer`
@@ -101,4 +119,5 @@ healthy plots in held-out regions; see `models/anomaly_detector_report.txt`.
 
 ## Notes
 
-- The carbon estimate (`estimatedCo2Tonnes`) is still a rule-based placeholder.
+- Carbon: canopy-height model (GEDI-trained) + Simard 2019 mangrove allometry + IPCC factors.
+  Full method, accuracy and limitations: `docs/carbon-calculation.md`.

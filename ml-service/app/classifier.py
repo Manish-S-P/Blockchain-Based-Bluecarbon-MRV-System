@@ -44,7 +44,21 @@ class EcosystemClassifier:
     def available(self) -> bool:
         return self.model is not None
 
+    def pixel_is(self, pixel_rows: list[dict], ecosystem: str) -> list[bool]:
+        """Whether each pixel's most likely class is `ecosystem` (False when features are missing)."""
+        complete = [all(row.get(f) is not None for f in self.features) for row in pixel_rows]
+        result = [False] * len(pixel_rows)
+        if not self.available or not any(complete):
+            return result
+        rows = [row for row, ok in zip(pixel_rows, complete) if ok]
+        predicted = self.model.predict(pd.DataFrame(rows, columns=self.features))
+        positions = [i for i, ok in enumerate(complete) if ok]
+        for i, label in zip(positions, predicted):
+            result[i] = str(label) == ecosystem
+        return result
+
     def classify(self, pixel_rows: list[dict], claimed_ecosystem: str) -> Classification:
+        pixel_rows = [row for row in pixel_rows if all(row.get(f) is not None for f in self.features)]
         if not self.available or not pixel_rows:
             return Classification("unknown", 0.0, "reject", len(pixel_rows))
 

@@ -6,7 +6,7 @@ const Project = require('./models/Project');
 const { runMrvModels } = require('./services/mlService');
 const { uploadMrvReportToIpfs } = require('./services/ipfsService');
 const { registerPlotOnChain, mintCreditOnChain } = require('./services/blockchainService');
-const { ECOSYSTEM_CARBON_DENSITY, calculateExpectedCredits } = require('./services/credits');
+const { computeAnnualCredits } = require('./services/credits');
 const { isWalletAddress, createLoginChallenge, verifyLoginSignature, requireAuth } = require('./services/auth');
 
 const app = express();
@@ -137,7 +137,10 @@ const getLastCompletedQuarterWindows = (count = 4) => {
   return windows;
 };
 
-const SUPPORTED_ECOSYSTEMS = new Set(Object.keys(ECOSYSTEM_CARBON_DENSITY));
+const SUPPORTED_ECOSYSTEMS = new Set(['mangrove', 'seagrass', 'saltmarsh']);
+// Ecosystems that can be registered today. Seagrass and saltmarsh are planned future additions:
+// the classifier and data model already know them, but they can't be registered yet.
+const ENABLED_ECOSYSTEMS = new Set(['mangrove']);
 const SUPPORTED_CHAINS = new Set(['local', 'amoy']);
 const MIN_CYCLES_WITH_DATA = 2;
 
@@ -178,8 +181,8 @@ app.post('/api/auth/verify', (req, res) => {
 app.post('/api/projects', ensureDbConnected, requireAuth, async (req, res) => {
   try {
     const vegetationType = String(req.body.vegetationType || '').toLowerCase();
-    if (!SUPPORTED_ECOSYSTEMS.has(vegetationType)) {
-      return res.status(400).json({ success: false, error: 'vegetationType must be mangrove, seagrass, or saltmarsh' });
+    if (!ENABLED_ECOSYSTEMS.has(vegetationType)) {
+      return res.status(400).json({ success: false, error: 'Only mangrove plots can be registered right now. Seagrass and saltmarsh are planned for a future version.' });
     }
 
     const mappedCoordinates = Array.isArray(req.body.coordinates) ? req.body.coordinates : [];
@@ -221,7 +224,7 @@ app.post('/api/projects', ensureDbConnected, requireAuth, async (req, res) => {
       } else if (SUPPORTED_ECOSYSTEMS.has(identified)) {
         error = `The satellite images show ${identified} (${confidencePct}% confidence), not ${vegetationType}. Please check your plot boundary or the ecosystem you chose.`;
       } else {
-        error = `The satellite images show that this plot is not mangrove, seagrass or saltmarsh. It looks like other land or open water (${confidencePct}% confidence).`;
+        error = `The satellite images show that this plot is not ${vegetationType}. It looks like other land or open water (${confidencePct}% confidence).`;
       }
       return res.status(400).json({
         success: false,
@@ -421,8 +424,8 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
     if (!SUPPORTED_CHAINS.has(network)) {
       return res.status(400).json({ success: false, error: 'chain must be "local" or "amoy"' });
     }
-    if (project.creditTokenId) {
-      return res.status(400).json({ success: false, error: 'Credits have already been minted for this plot' });
+    if (project.creditTokenId || project.reportIpfsHash) {
+      return res.status(400).json({ success: false, error: 'This monitoring year has already been finalized for this plot' });
     }
 
     const ndviValues = project.monitoringCycles.map((cycle) => cycle.ndvi).filter((ndvi) => typeof ndvi === 'number');
@@ -431,7 +434,7 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
       : null;
 
     // Plot health is judged by the anomaly detector (year-on-year change per ecosystem), not by
-    // a fixed NDVI threshold, which would always fail underwater seagrass.
+    // a fixed NDVI threshold.
     const cyclesWithData = project.monitoringCycles.filter((cycle) => cycle.anomalyStatus !== 'insufficient_data');
     if (cyclesWithData.length < MIN_CYCLES_WITH_DATA) {
       return res.status(400).json({
@@ -456,11 +459,12 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
       });
     }
 
-    // Credits follow the smart contract's density-based policy formula exactly, so the
-    // on-chain tolerance check passes deterministically.
-    const expectedCredits = calculateExpectedCredits(project);
-    const submittedCredits = expectedCredits;
+    const breakdown = computeAnnualCredits({ cycles: project.monitoringCycles, areaHa: project.area });
+    if (!breakdown.eligible) {
+      return res.status(400).json({ success: false, error: breakdown.reason });
+    }
 
+    // The audit report holds every input needed to recompute the credits; its IPFS hash goes on-chain.
     const reportPayload = {
       plotId: project.plotId,
       walletAddress: project.walletAddress,
@@ -469,29 +473,44 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
       area: project.area,
       monitoringCycles: project.monitoringCycles,
       averageNdvi,
-      expectedCredits,
-      submittedCredits,
+      creditCalculation: breakdown,
+      methodology: 'docs/carbon-calculation.md',
       finalizedAt: new Date().toISOString(),
     };
-
     const ipfsHash = await uploadMrvReportToIpfs(reportPayload);
+
+    project.averageNdvi = averageNdvi;
+    project.reportIpfsHash = ipfsHash;
+    project.creditBreakdown = breakdown;
+
+    if (breakdown.credits <= 0) {
+      project.carbonCredits = 0;
+      project.status = 'Year completed - no provable gain';
+      await project.save();
+      return res.status(200).json({
+        success: true,
+        message: 'Year finalized. The measured carbon gain was not larger than the measurement uncertainty, so no credits were issued.',
+        ipfsHash,
+        creditCalculation: breakdown,
+        project,
+      });
+    }
+
     const mintResult = await mintCreditOnChain({
       plotId: project.plotId,
       walletAddress: project.walletAddress,
-      submittedCredits,
+      submittedCredits: breakdown.credits,
       reportIpfsHash: ipfsHash,
       network,
       area: project.area,
       vegetationType: project.vegetationType,
     });
 
-    project.averageNdvi = averageNdvi;
-    project.reportIpfsHash = ipfsHash;
     project.contractVerified = mintResult.onChain;
     project.creditTokenId = mintResult.tokenId;
     project.mintTxHash = mintResult.txHash || '';
     project.mintNetwork = network;
-    project.carbonCredits = submittedCredits;
+    project.carbonCredits = breakdown.credits;
     project.status = 'Credit Minted';
     await project.save();
 
@@ -502,8 +521,7 @@ app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, asy
       tokenId: project.creditTokenId,
       ipfsHash: project.reportIpfsHash,
       txHash: mintResult.txHash,
-      expectedCredits,
-      submittedCredits,
+      creditCalculation: breakdown,
       averageNdvi,
       project,
     });

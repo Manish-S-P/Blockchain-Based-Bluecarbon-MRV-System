@@ -7,7 +7,7 @@ const STEPS = [
   {
     icon: MapPin,
     title: '1. Draw your land',
-    text: 'Mark your mangrove, seagrass or saltmarsh plot on a satellite map. We check straight away that it really is that ecosystem.',
+    text: 'Mark your mangrove plot on a satellite map. We check straight away that it really is mangrove.',
   },
   {
     icon: Satellite,
@@ -38,10 +38,10 @@ const LandingPage = () => {
         <div className="text-center space-y-6">
           <p className="text-emerald-400 font-medium">Blue Carbon Registry</p>
           <h1 className="text-4xl md:text-6xl font-bold text-white leading-tight">
-            Get rewarded for protecting<br className="hidden md:block" /> coastal ecosystems
+            Get rewarded for protecting<br className="hidden md:block" /> mangrove forests
           </h1>
           <p className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto">
-            Mangroves, seagrass and saltmarshes take carbon out of the air. Register your plot, and we use satellite images to confirm it stays healthy, so you can earn carbon credits for it.
+            Mangrove forests take carbon out of the air. Register your mangrove plot, and we use satellite images to confirm it stays healthy, so you can earn carbon credits for it.
           </p>
           <div>
             <button onClick={connectWallet} className="btn-primary px-8 py-3.5 text-lg inline-flex items-center gap-2">
@@ -65,6 +65,7 @@ const LandingPage = () => {
         </div>
 
         <p className="text-center text-sm text-slate-500 max-w-2xl mx-auto">
+          Currently for mangroves. Seagrass and saltmarsh are coming in a future version.<br />
           1 carbon credit = 1 tonne of carbon dioxide (CO₂) kept out of the air. Satellite data: Sentinel-1 and Sentinel-2 via Google Earth Engine.
         </p>
       </div>

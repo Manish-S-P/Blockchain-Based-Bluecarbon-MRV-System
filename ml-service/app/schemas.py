@@ -18,6 +18,21 @@ class MlvInferRequest(BaseModel):
     strictRealData: bool = False
 
 
+class CarbonOut(BaseModel):
+    """Tree carbon for the plot (t CO2 per hectare), with a 90% range."""
+    status: str  # "ok" | "insufficient_data" | "unavailable"
+    treeCo2: dict[str, float] = Field(default_factory=dict)       # low / mid / high
+    treeCo2Above: float = 0.0
+    treeCo2Below: float = 0.0
+    canopyHeight: dict[str, float] = Field(default_factory=dict)  # metres
+    biomass: dict[str, float] = Field(default_factory=dict)       # t dry matter / ha
+    mangroveCover: float = 0.0
+    applicableShare: float = 0.0
+    climateZone: str = ""
+    pixels: int = 0
+    explanation: list[dict] = Field(default_factory=list)
+
+
 class MlvInferResponse(BaseModel):
     ndvi: float | None
     ecosystemMatchesClaim: bool
@@ -30,6 +45,8 @@ class MlvInferResponse(BaseModel):
     anomalyStatus: str  # "normal" | "anomaly" | "insufficient_data"
     anomalyScore: float | None = None
     anomalySignals: dict[str, float] = Field(default_factory=dict)
+    carbon: CarbonOut
+    carbonPreviousYear: CarbonOut
     estimatedCo2Tonnes: float
     source: str
     windowStart: str | None = None

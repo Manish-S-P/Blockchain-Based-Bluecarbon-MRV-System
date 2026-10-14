@@ -24,7 +24,7 @@ FEATURE_NAMES = [
 COMPOSITE_DAYS = 365
 SAMPLE_SCALE_M = 30
 
-_S2_BANDS = ["B2", "B3", "B4", "B5", "B8", "B11", "B12"]
+_S2_BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"]
 # Sentinel-2 scene classification values to drop: cloud shadow, clouds, cirrus, snow.
 _S2_BAD_SCL = [3, 8, 9, 10, 11]
 
@@ -176,3 +176,49 @@ def build_monitoring_image(start: str, end: str, region: ee.Geometry) -> ee.Imag
         optical_scenes.select("B2").count().unmask(0).rename("S2_CLEAR"),
         radar_scenes.select("VH").count().unmask(0).rename("S1_COUNT"),
     ]).toFloat()
+
+
+# ---------------------------------------------------------------------------
+# Canopy height / biomass features (carbon model)
+# ---------------------------------------------------------------------------
+
+# Features for the canopy-height model, computed from a single quarter's composite so
+# predictions match the season of the GEDI measurement they were trained on.
+# "quarter" (1-4) is added outside Earth Engine.
+HEIGHT_IMAGE_FEATURES = [
+    "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12",
+    "NDVI", "NDWI", "MNDWI", "EVI", "NDMI", "NDRE",
+    "VV", "VH", "VH_VV",
+    "elevation",
+]
+HEIGHT_FEATURES = HEIGHT_IMAGE_FEATURES + ["quarter"]
+HEIGHT_SCALE_M = 25  # GEDI footprint diameter
+
+
+def build_height_feature_image(start: str, end: str, region: ee.Geometry) -> ee.Image:
+    """Per-pixel features for the canopy-height model for the period [start, end)."""
+    s2 = _sentinel2_composite(start, end, region)
+    nir, red, blue = (s2.select(b) for b in ["B8", "B4", "B2"])
+    indices = [
+        s2.normalizedDifference(["B8", "B4"]).rename("NDVI"),
+        s2.normalizedDifference(["B3", "B8"]).rename("NDWI"),
+        s2.normalizedDifference(["B3", "B11"]).rename("MNDWI"),
+        nir.subtract(red).multiply(2.5)
+        .divide(nir.add(red.multiply(6)).subtract(blue.multiply(7.5)).add(1))
+        .rename("EVI"),
+        s2.normalizedDifference(["B8", "B11"]).rename("NDMI"),
+        s2.normalizedDifference(["B8", "B5"]).rename("NDRE"),
+    ]
+    elevation = ee.Image("NASA/NASADEM_HGT/001").select("elevation").unmask(0).toFloat()
+    return (
+        s2.addBands(indices)
+        .addBands(_sentinel1_composite(start, end, region))
+        .addBands(elevation)
+        .select(HEIGHT_IMAGE_FEATURES)
+        .toFloat()
+    )
+
+
+def quarter_of(start: str) -> int:
+    """Calendar quarter (1-4) of a window's start date, YYYY-MM-DD."""
+    return (int(start[5:7]) - 1) // 3 + 1

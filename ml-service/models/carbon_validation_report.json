@@ -1,0 +1,156 @@
+[
+  {
+    "region": "sundarbans",
+    "pixels": 300,
+    "our_height_m": 4.1,
+    "tandemx_height_m": 5.9,
+    "our_agb_t_ha": 10.7,
+    "our_agb_p90_t_ha": 16.9,
+    "simard_agb_t_ha": 46.5,
+    "esa_cci_agb_t_ha": 12.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "bhitarkanika",
+    "pixels": 300,
+    "our_height_m": 4.5,
+    "tandemx_height_m": 7.5,
+    "our_agb_t_ha": 12.9,
+    "our_agb_p90_t_ha": 81.0,
+    "simard_agb_t_ha": 67.0,
+    "esa_cci_agb_t_ha": 18.0,
+    "field_agb_t_ha": 318.79
+  },
+  {
+    "region": "godavari",
+    "pixels": 300,
+    "our_height_m": 4.4,
+    "tandemx_height_m": 5.8,
+    "our_agb_t_ha": 12.7,
+    "our_agb_p90_t_ha": 26.1,
+    "simard_agb_t_ha": 46.5,
+    "esa_cci_agb_t_ha": 28.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "pichavaram_cauvery",
+    "pixels": 300,
+    "our_height_m": 3.3,
+    "tandemx_height_m": 3.1,
+    "our_agb_t_ha": 7.2,
+    "our_agb_p90_t_ha": 11.9,
+    "simard_agb_t_ha": 7.4,
+    "esa_cci_agb_t_ha": 14.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "gulf_of_kutch",
+    "pixels": 300,
+    "our_height_m": 3.0,
+    "tandemx_height_m": 3.7,
+    "our_agb_t_ha": 5.9,
+    "our_agb_p90_t_ha": 11.4,
+    "simard_agb_t_ha": 29.7,
+    "esa_cci_agb_t_ha": 2.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "rann_kutch_coast",
+    "pixels": 300,
+    "our_height_m": 2.8,
+    "tandemx_height_m": 2.4,
+    "our_agb_t_ha": 5.2,
+    "our_agb_p90_t_ha": 7.4,
+    "simard_agb_t_ha": 7.4,
+    "esa_cci_agb_t_ha": 29.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "gulf_of_mannar",
+    "pixels": 300,
+    "our_height_m": 3.5,
+    "tandemx_height_m": 4.0,
+    "our_agb_t_ha": 8.1,
+    "our_agb_p90_t_ha": 12.5,
+    "simard_agb_t_ha": null,
+    "esa_cci_agb_t_ha": 7.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "palk_bay",
+    "pixels": 300,
+    "our_height_m": 3.4,
+    "tandemx_height_m": 3.0,
+    "our_agb_t_ha": 7.4,
+    "our_agb_p90_t_ha": 10.2,
+    "simard_agb_t_ha": 16.7,
+    "esa_cci_agb_t_ha": 9.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "andaman",
+    "pixels": 300,
+    "our_height_m": 14.8,
+    "tandemx_height_m": 11.1,
+    "our_agb_t_ha": 142.4,
+    "our_agb_p90_t_ha": 312.9,
+    "simard_agb_t_ha": 186.7,
+    "esa_cci_agb_t_ha": 72.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "mumbai_thane_creek",
+    "pixels": 300,
+    "our_height_m": 7.9,
+    "tandemx_height_m": 6.3,
+    "our_agb_t_ha": 40.7,
+    "our_agb_p90_t_ha": 51.2,
+    "simard_agb_t_ha": 16.7,
+    "esa_cci_agb_t_ha": 5.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "goa_mandovi",
+    "pixels": 300,
+    "our_height_m": 5.7,
+    "tandemx_height_m": null,
+    "our_agb_t_ha": 20.8,
+    "our_agb_p90_t_ha": 53.0,
+    "simard_agb_t_ha": null,
+    "esa_cci_agb_t_ha": 10.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "kochi_backwaters",
+    "pixels": 300,
+    "our_height_m": 5.2,
+    "tandemx_height_m": null,
+    "our_agb_t_ha": 17.7,
+    "our_agb_p90_t_ha": 33.0,
+    "simard_agb_t_ha": null,
+    "esa_cci_agb_t_ha": 9.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "puttalam_sri_lanka",
+    "pixels": 300,
+    "our_height_m": 4.4,
+    "tandemx_height_m": 3.8,
+    "our_agb_t_ha": 12.5,
+    "our_agb_p90_t_ha": 28.6,
+    "simard_agb_t_ha": 46.5,
+    "esa_cci_agb_t_ha": 18.0,
+    "field_agb_t_ha": null
+  },
+  {
+    "region": "krishna_delta",
+    "pixels": 300,
+    "our_height_m": 3.4,
+    "tandemx_height_m": 3.2,
+    "our_agb_t_ha": 7.4,
+    "our_agb_p90_t_ha": 11.2,
+    "simard_agb_t_ha": 29.7,
+    "esa_cci_agb_t_ha": 9.0,
+    "field_agb_t_ha": null
+  }
+]

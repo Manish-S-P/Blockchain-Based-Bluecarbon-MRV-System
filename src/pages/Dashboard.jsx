@@ -69,6 +69,7 @@ const readableError = (raw, fallback) => {
 const nextStep = (project) => {
   const cycles = project.monitoringCycles || [];
   if (project.creditTokenId) return { id: 'done' };
+  if (project.reportIpfsHash) return { id: 'no-gain' };
   const damaged = cycles.filter((c) => c.anomalyStatus === 'anomaly' || c.anomalyDetected);
   if (damaged.length > 0) return { id: 'blocked', reason: `Possible damage was found in ${damaged.map(quarterLabel).join(', ')}, so no credits can be issued for this year.` };
   const mismatched = cycles.filter((c) => c.ecosystemMatchesClaim === false);
@@ -107,6 +108,7 @@ const Pill = ({ tone, icon: Icon, children, title }) => (
 const statusPill = (project) => {
   const step = nextStep(project);
   if (step.id === 'done') return <Pill tone="good" icon={Award}>Credit received</Pill>;
+  if (step.id === 'no-gain') return <Pill tone="muted">Year done, no credits</Pill>;
   if (step.id === 'blocked') return <Pill tone="bad" icon={AlertTriangle}>Not eligible this year</Pill>;
   if (step.id === 'finalize') return <Pill tone="warn">Ready for credits</Pill>;
   return <Pill tone="muted">Checks: {(project.monitoringCycles || []).length} of 4</Pill>;
@@ -118,7 +120,7 @@ const Journey = ({ project }) => {
     { label: 'Plot registered', done: true },
     { label: `Quarterly checks (${cycles}/4)`, done: cycles >= 4 },
     { label: 'Year completed', done: Boolean(project.reportIpfsHash) },
-    { label: 'Credit received', done: Boolean(project.creditTokenId) },
+    { label: project.reportIpfsHash && !project.creditTokenId ? 'No credit this year' : 'Credit received', done: Boolean(project.creditTokenId) },
   ];
   return (
     <ol className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -151,6 +153,95 @@ const GreennessChart = ({ cycles }) => {
           <Line type="monotone" dataKey="greenness" stroke="#34d399" strokeWidth={2.5} dot={{ r: 4, fill: '#34d399' }} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
+    </div>
+  );
+};
+
+const fmt = (value, digits = 0) => (typeof value === 'number' ? value.toFixed(digits) : '–');
+
+// Tree carbon stored in the plot for the latest quarter that has an estimate.
+const CarbonCard = ({ cycles, area }) => {
+  const latest = [...cycles].reverse().find((c) => c.carbon?.status === 'ok');
+  if (!latest) return null;
+  const c = latest.carbon;
+  return (
+    <div className="card p-5 space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-white">Carbon stored in the trees</h3>
+        <p className="text-sm text-slate-400">Latest check: {quarterLabel(latest)}</p>
+      </div>
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+        <p className="text-3xl font-bold text-white">{fmt(c.treeCo2.mid)} <span className="text-base font-normal text-slate-400">t CO₂ per hectare</span></p>
+        <p className="text-slate-300">likely between <strong>{fmt(c.treeCo2.low)}</strong> and <strong>{fmt(c.treeCo2.high)}</strong> (90% range)</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+        {[
+          ['Whole plot', `${fmt(c.treeCo2.mid * area, 1)} t CO₂`],
+          ['Above ground', `${fmt(c.treeCo2Above)} t/ha`],
+          ['Roots (below ground)', `${fmt(c.treeCo2Below)} t/ha`],
+          ['Canopy height', `${fmt(c.canopyHeight?.mid, 1)} m`],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg bg-white/[0.03] border border-white/10 p-3">
+            <p className="text-slate-400">{label}</p>
+            <p className="text-white font-medium">{value}</p>
+          </div>
+        ))}
+      </div>
+      {c.explanation?.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-slate-300 mb-1">What drives this number</p>
+          <ul className="space-y-1 text-sm">
+            {c.explanation.map((item) => (
+              <li key={item.factor} className="flex justify-between gap-4 text-slate-300">
+                <span>{item.factor}</span>
+                <span className={item.effect_t_co2_ha >= 0 ? 'text-emerald-300' : 'text-rose-300'}>
+                  {item.effect_t_co2_ha >= 0 ? '+' : ''}{fmt(item.effect_t_co2_ha)} t/ha
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-slate-500 mt-1">Compared with an average mangrove pixel in the training data (SHAP values).</p>
+        </div>
+      )}
+      {c.applicableShare < 0.5 && (
+        <p className="text-sm text-amber-200">This plot looks unlike the mangroves the model learned from, so its estimate is not used for credits.</p>
+      )}
+      <p className="text-xs text-slate-500">
+        How it is measured: satellite images → canopy height (trained on NASA GEDI laser) → tree weight (Simard et al. 2019 mangrove equation) → carbon (IPCC factors). See docs/carbon-calculation.md.
+      </p>
+    </div>
+  );
+};
+
+// The annual credit calculation, line by line.
+const CreditBreakdown = ({ breakdown }) => {
+  if (!breakdown?.eligible) return null;
+  const rows = [
+    ['Tree carbon gain vs. same season last year', `${fmt(breakdown.treeGainPerHa, 1)} ± ${fmt(breakdown.treeGainHalfWidthPerHa, 1)} t CO₂/ha`],
+    ['Part of that gain we can prove', `${fmt(breakdown.provenTreeGainPerHa, 1)} t CO₂/ha`],
+    [`Soil carbon (official rate, ${Math.round(breakdown.mangroveCover * 100)}% mangrove cover)`, `+ ${fmt(breakdown.soilGainPerHa, 2)} t CO₂/ha`],
+    ['Per hectare', `${fmt(breakdown.perHectare, 2)} t CO₂/ha`],
+    [`× plot area (${fmt(breakdown.areaHa, 2)} ha)`, `${fmt(breakdown.beforeBuffer, 2)} t CO₂`],
+    [`− safety buffer (${Math.round(breakdown.bufferShare * 100)}%)`, `− ${fmt(breakdown.buffer, 2)}`],
+    ['Credits', `${fmt(breakdown.credits, 2)}`],
+  ];
+  return (
+    <div className="mt-4">
+      <p className="text-sm font-medium text-slate-300 mb-2">How the credits were calculated</p>
+      <dl className="divide-y divide-white/10 text-sm rounded-lg border border-white/10">
+        {rows.map(([label, value], index) => (
+          <div key={label} className={`flex justify-between gap-4 px-3 py-2 ${index === rows.length - 1 ? 'font-semibold text-white' : 'text-slate-300'}`}>
+            <dt>{label}</dt>
+            <dd className="text-right whitespace-nowrap">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {breakdown.uncertaintyDiscountShare > 0 && (
+        <p className="text-xs text-slate-500 mt-2">
+          The measurement range was {breakdown.relativeUncertainty === null ? 'larger than the gain' : `±${Math.round(breakdown.relativeUncertainty * 100)}% of the gain`},
+          so under India's official uncertainty rule (CDM AR-TOOL14) only the lower end of the gain is counted.
+        </p>
+      )}
     </div>
   );
 };
@@ -381,7 +472,7 @@ const Dashboard = () => {
                 {/* Next step */}
                 <div className="card p-5">
                   <p className={`text-sm font-semibold uppercase tracking-wide mb-2 ${step.id === 'blocked' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {{ done: 'Finished', blocked: 'No credits this year' }[step.id] || 'Next step'}
+                    {{ done: 'Finished', 'no-gain': 'Year finished', blocked: 'No credits this year' }[step.id] || 'Next step'}
                   </p>
 
                   {step.id === 'first-check' && (
@@ -410,8 +501,8 @@ const Dashboard = () => {
 
                   {step.id === 'finalize' && (
                     <>
-                      <p className="text-white text-lg">All 4 checks are done. Finish the year to receive your credit.</p>
-                      <p className="text-slate-400 mt-1">We save a yearly report and create your carbon credit on the blockchain, owned by your wallet.</p>
+                      <p className="text-white text-lg">All 4 checks are done. Finish the year to calculate your credits.</p>
+                      <p className="text-slate-400 mt-1">We compare the carbon in your trees with the same season last year, count only the part of the gain we can prove, add official soil carbon, keep 12% as a safety buffer, and record the result on the blockchain with a public report.</p>
                       <div className="flex flex-wrap items-center gap-4 mt-4">
                         <button disabled={busy} onClick={() => finishYear(selected)} className="btn-primary px-5 py-2.5 disabled:opacity-50 flex items-center gap-2">
                           <Award className="w-4 h-4" /> Finish year & get credit
@@ -442,10 +533,21 @@ const Dashboard = () => {
                             View on Polygonscan <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         )}
+                        <CreditBreakdown breakdown={selected.creditBreakdown} />
                       </div>
                     </div>
                   )}
+
+                  {step.id === 'no-gain' && (
+                    <div>
+                      <p className="text-white text-lg">The year is complete, but no credits were issued this time.</p>
+                      <p className="text-slate-400 mt-1">The measured carbon gain was smaller than the satellite measurement uncertainty. Gains keep adding up, and are credited once they are clearly larger than the uncertainty.</p>
+                      <CreditBreakdown breakdown={selected.creditBreakdown} />
+                    </div>
+                  )}
                 </div>
+
+                <CarbonCard cycles={cycles} area={selected.area} />
 
                 {/* Quarterly results */}
                 <div className="card p-5">
@@ -466,6 +568,7 @@ const Dashboard = () => {
                               <div>
                                 <p className="text-white font-medium">{quarterLabel(cycle)}</p>
                                 <p className="text-sm text-slate-400">
+                                  {cycle.carbon?.status === 'ok' && `Tree carbon ${fmt(cycle.carbon.treeCo2.mid)} t CO₂/ha (${fmt(cycle.carbon.treeCo2.low)}–${fmt(cycle.carbon.treeCo2.high)}) · `}
                                   Greenness {typeof cycle.ndvi === 'number' ? cycle.ndvi.toFixed(2) : '–'}
                                   {cycle.geeImageCount ? ` · ${cycle.geeImageCount} satellite images` : ''}
                                   {cycle.ecosystemMatchesClaim === false && ` · satellite saw ${ecosystemLabel(cycle.identifiedEcosystem).toLowerCase()}`}
@@ -478,7 +581,7 @@ const Dashboard = () => {
                       </ul>
                       <div className="mt-4">
                         <p className="text-sm text-slate-400 mb-1 flex items-center gap-1.5">
-                          <Info className="w-4 h-4" /> Greenness (NDVI) goes from 0 to 1. Higher means more healthy plants. Seagrass is underwater, so its greenness is always low.
+                          <Info className="w-4 h-4" /> Greenness (NDVI) goes from 0 to 1. Higher means more healthy plants.
                         </p>
                         <GreennessChart cycles={cycles} />
                       </div>
