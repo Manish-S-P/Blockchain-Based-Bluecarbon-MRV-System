@@ -22,8 +22,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.carbon import CarbonModel, height_to_agb  # noqa: E402
-from app.earth_engine import HEIGHT_IMAGE_FEATURES, build_height_feature_image, init_earth_engine  # noqa: E402
-from training.build_height_dataset import MANGROVE_REGIONS, mangrove_mask  # noqa: E402
+from app.earth_engine import HEIGHT_IMAGE_FEATURES, build_height_feature_image, init_earth_engine, mangrove_mask  # noqa: E402
+from training.build_height_dataset import MANGROVE_REGIONS  # noqa: E402
 
 WINDOW = ("2021-01-01", "2021-04-01")
 SIMARD_AGB = "projects/sat-io/open-datasets/global_mangrove_distribution/agb"

@@ -101,6 +101,27 @@ const runMrvModels = async (project, options = {}) => {
   }
 };
 
+/** POST to the ML service; baseline steps have no simulated fallback. */
+const postToMl = async (route, body) => {
+  const base = (process.env.ML_SERVICE_URL || '').replace(/\/$/, '');
+  if (!base) throw new Error('ML service is not configured (ML_SERVICE_URL), so the baseline cannot be built.');
+  const response = await fetch(`${base}${route}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`ML service ${route} responded with ${response.status}: ${await response.text()}`);
+  return response.json();
+};
+
+const buildBaseline = ({ coordinates, preWindows, excludePolygons }) => postToMl('/mrv/baseline', {
+  coordinates, preWindows, excludePolygons,
+});
+
+const actualDonorChange = ({ donors, windows }) => postToMl('/mrv/baseline/actual', { donors, windows });
+
 module.exports = {
   runMrvModels,
+  buildBaseline,
+  actualDonorChange,
 };

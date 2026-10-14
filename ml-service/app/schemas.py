@@ -52,3 +52,14 @@ class MlvInferResponse(BaseModel):
     windowStart: str | None = None
     windowEnd: str | None = None
     geeImageCount: int = 0
+
+
+class BaselineRequest(BaseModel):
+    coordinates: list[list[float]]
+    preWindows: list[list[str]]                       # 4 x [start, end inclusive], before day 0
+    excludePolygons: list[list[list[float]]] = Field(default_factory=list)  # other registered plots
+
+
+class ActualChangeRequest(BaseModel):
+    donors: list[dict]                                # [{longitude, latitude, weight}]
+    windows: list[list[str]]                          # monitoring windows, [start, end inclusive]

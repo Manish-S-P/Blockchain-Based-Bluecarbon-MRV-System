@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWallet } from '../context/WalletContext';
+import { useWallet } from '../context/walletContextValue';
 import { useNavigate } from 'react-router-dom';
 import MapPolygonSelector from '../components/MapPolygonSelector';
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, ShieldCheck, TreePine, Waves, Leaf, Satellite, AlertTriangle } from 'lucide-react';
@@ -19,7 +19,7 @@ const ProjectRegistration = () => {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    name: '', phone: '', address: '', aadhar: '', rtcNumber: '', vegetationType: 'mangrove', area: '',
+    name: '', phone: '', address: '', rtcNumber: '', vegetationType: 'mangrove', area: '',
   });
   const [coordinates, setCoordinates] = useState([]);
   const [currentStep, setCurrentStep] = useState(1);
@@ -30,7 +30,7 @@ const ProjectRegistration = () => {
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const goTo = (step) => {
-    if (step > 1 && !(formData.name && formData.phone && formData.address && formData.aadhar)) {
+    if (step > 1 && !(formData.name && formData.phone && formData.address)) {
       setStepError('Please fill in all your details first.');
       setCurrentStep(1);
       return;
@@ -137,10 +137,10 @@ const ProjectRegistration = () => {
                   <label className="label" htmlFor="address">Village / town and district</label>
                   <input id="address" required name="address" value={formData.address} onChange={handleChange} className="input-dark" placeholder="e.g. Pichavaram, Cuddalore, Tamil Nadu" />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="label" htmlFor="aadhar">Aadhaar number</label>
-                  <input id="aadhar" required name="aadhar" value={formData.aadhar} onChange={handleChange} className="input-dark" placeholder="1234 5678 9012" />
-                  <p className="text-sm text-slate-500 mt-1">Kept private. It is never shown in the app or stored on the blockchain.</p>
+                <div className="md:col-span-2 rounded-lg bg-white/[0.03] border border-white/10 p-3 text-sm text-slate-400">
+                  <span className="text-slate-200 font-medium">Identity (prototype): </span>
+                  no ID documents are collected. A demo identity is created from your wallet, name and phone number. A real deployment would use proper KYC here.
+                  Your name and phone are never shown publicly or stored on the blockchain.
                 </div>
               </div>
               <div className="flex justify-end">

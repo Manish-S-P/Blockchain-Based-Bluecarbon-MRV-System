@@ -282,3 +282,26 @@ class CarbonModel:
             climate_zone=zone,
             explanation=explanation,
         )
+
+
+def estimate_points(model: "CarbonModel", rows: list[dict], coords: list[tuple[float, float]]) -> list[dict | None]:
+    """Tree carbon (t CO2/ha, low/mid/high) for single mangrove pixels, e.g. baseline donors.
+
+    `rows` hold height features (incl. "quarter"); `coords` are (longitude, latitude).
+    Returns None for points with missing features (clouds).
+    """
+    complete = [all(row.get(f) is not None for f in model.features) for row in rows]
+    results: list[dict | None] = [None] * len(rows)
+    if not model.available or not any(complete):
+        return results
+    X = np.array([[row[f] for f in model.features] for row, ok in zip(rows, complete) if ok], dtype=np.float32)
+    q = model.bundle["model"].predict_quantiles(X)
+    margin = model.bundle["conformal_margin_m"]
+    heights = np.column_stack([np.clip(q[:, 0] - margin, 0, None), q[:, 1], q[:, 2] + margin])
+    inside = model.bundle["aoa"].inside(X)
+    positions = [i for i, ok in enumerate(complete) if ok]
+    for k, i in enumerate(positions):
+        lon, lat = coords[i]
+        co2 = agb_to_co2(height_to_agb(heights[k]), climate_zone(lon, lat))["total"]
+        results[i] = {"low": float(co2[0]), "mid": float(co2[1]), "high": float(co2[2]), "applicable": bool(inside[k])}
+    return results

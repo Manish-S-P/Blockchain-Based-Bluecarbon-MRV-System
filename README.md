@@ -1,77 +1,144 @@
-# Blue Carbon Registry
+# Blue Carbon Registry (prototype)
 
-## Run frontend
+A mangrove carbon-credit registry. Farmers register a mangrove plot. Satellites check it every
+quarter. A sealed baseline (what would have happened without the project) is fixed on the
+blockchain at day 0. After a year, a smart contract calculates the credits the farmer can
+**prove** and mints them as an NFT. Anyone can verify the result on a public page.
 
-```bash
-npm install
-npm run dev
+| Part | What it does | Tech |
+|---|---|---|
+| `src/` | Farmer app + public verification pages | React 19, Vite, Tailwind, Leaflet, ethers |
+| `backend/` | API, wallet login, yearly MRV cycle, credit rule mirror | Express, MongoDB, ethers v6 |
+| `ml-service/` | Ecosystem classifier, anomaly detector, carbon model, baseline | FastAPI, Google Earth Engine, scikit-learn, SHAP |
+| `blockchain/` | `BlueCarbonRegistry` contract: seal, quarterly records, on-chain credits | Solidity, Hardhat, OpenZeppelin |
+| `docs/` | How carbon is calculated, how the baseline and verification work | — |
+
+**Read first:** [docs/carbon-calculation.md](docs/carbon-calculation.md) and
+[docs/baseline-and-verification.md](docs/baseline-and-verification.md).
+
+Scope: **mangroves only** (seagrass and saltmarsh are planned). Identity is a mock (no ID documents).
+
+---
+
+## How a year works
+
+```
+Register plot ──► Seal baseline (day 0) ──► 4 quarterly satellite checks ──► Reveal + credits (month 12)
+  satellite check      look-alike "twin",        carbon, damage, data          contract re-checks the seal,
+  overlap check        hash on-chain              quality → on-chain            computes + mints credits
 ```
 
-Frontend runs on Vite and proxies all `/api/*` calls to `http://localhost:5050` by default.
+- **Live mode:** checks run every 3 months in real time.
+- **Replay mode (demo):** the last 4 completed quarters of real satellite data are processed
+  straight away, so a whole year can be shown in a few minutes.
 
-## Run backend
+---
+
+## Run it locally
+
+You need Node 20+, Python 3.12+, Docker (for MongoDB), a Google Earth Engine service account,
+and MetaMask in the browser.
+
+### 1. MongoDB
+
+```bash
+docker run -d --name bcr-mongo -p 127.0.0.1:27017:27017 mongo:7
+```
+
+### 2. Blockchain (Hardhat)
+
+```bash
+cd blockchain
+npm install
+npm run node                       # terminal 1: local chain on http://127.0.0.1:8545
+npm run deploy:local:export        # terminal 2: deploys and writes backend/.generated-blockchain.env
+```
+
+### 3. ML service
+
+```bash
+cd ml-service
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# Earth Engine key at ml-service/keys/gee-service-account.json (not in git)
+export GEE_PROJECT=<your-gee-project>
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+`GET http://127.0.0.1:8000/health` should show all three models loaded. The trained models are
+in `ml-service/models/`. Retraining is described in `ml-service/README.md`.
+
+### 4. Backend
 
 ```bash
 cd backend
 npm install
-npm run dev
+cp .env.example .env   # then fill in the values below
+npm run dev            # http://localhost:5050
 ```
 
-## Local blockchain deployment (Hardhat)
+Key settings in `backend/.env`:
 
-Terminal 1:
+| Setting | Example | Notes |
+|---|---|---|
+| `MONGODB_URI` | `mongodb://127.0.0.1:27017/blue_carbon_registry` | |
+| `ML_SERVICE_URL` | `http://127.0.0.1:8000` | |
+| `BLOCKCHAIN_RPC_URL` | `http://127.0.0.1:8545` | Leave the three `BLOCKCHAIN_*` values empty to simulate the chain |
+| `BLOCKCHAIN_PRIVATE_KEY` | Hardhat account #0 key | The backend is the contract owner (MRV oracle) |
+| `CARBON_CONTRACT_ADDRESS` | from `deploy:local:export` | |
+| `CARBON_CONTRACT_ABI_PATH` | `blockchain/artifacts/contracts/BlueCarbonRegistry.sol/BlueCarbonRegistry.json` | |
+| `AUTH_SECRET` | `openssl rand -hex 32` | Signs wallet sessions |
+| `PINATA_API_KEY` / `PINATA_API_SECRET` | | Optional; without them reports get a local placeholder hash |
+| `GEE_PROJECT` | | |
+| `STRICT_REAL_DATA` | `true` | Refuse to fall back to simulated satellite data |
+
+### 5. Frontend
 
 ```bash
-cd blockchain
 npm install
-npm run node
+npm run dev            # http://localhost:5173 (proxies /api to the backend)
 ```
 
-Terminal 2:
+Use `VITE_BACKEND_URL` if the backend is not on port 5050. For local Hardhat, MetaMask does not
+need a network or test ETH: it only signs the login message, and the backend pays gas.
+
+---
+
+## Demo walkthrough
+
+1. Open http://localhost:5173 and click **Connect wallet** (MetaMask signs a login message).
+2. **Add a plot.** Switch the map to *Satellite*, click the corners of a mangrove patch (e.g.
+   Thane Creek, Mumbai) and register. The satellite check accepts or rejects it with reasons.
+3. On **My plots**, click **Demo: replay last year**. This takes a few minutes. It:
+   - seals the baseline on-chain;
+   - runs 4 quarterly checks on real past satellite data, each recorded on-chain.
+4. Click **Reveal baseline and finish the year**. The contract re-checks the seal, calculates the
+   credits and mints the NFT. The page shows plot vs baseline and the calculation line by line.
+5. Open **Public page** (or **Public registry**, no login needed) and click **Verify the
+   baseline**. Your browser re-hashes the audit file and compares the seal with the blockchain.
+
+---
+
+## Tests
 
 ```bash
-cd blockchain
-npm run deploy:local:export
+cd blockchain && npm test      # contract: seal/reveal, BaselineMismatch, anomaly, multi-year, owner-only
+cd backend && npm test         # credit rule mirror and monitoring windows
+npm run lint                   # frontend
 ```
 
-Then copy values from `backend/.generated-blockchain.env` into `backend/.env`.
+Model evaluation reports (accuracy on regions the model never saw) are in `ml-service/models/*_report.txt`.
 
-## Run ML service (FastAPI)
+---
 
-```bash
-cd ml-service
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+## Project status
 
-Before running ML service:
+Prototype for a final-year project. What is real and what is simplified:
 
-```bash
-export GEE_PROJECT=river-carrier-398207
-export GEE_SERVICE_ACCOUNT_JSON_PATH=ml-service/keys/gee-service-account.json
-```
-
-Create `backend/.env` from `backend/.env.example`:
-
-```env
-MONGODB_URI=<your_mongodb_connection_string>
-PORT=5050
-```
-
-If `MONGODB_URI` is missing or invalid, backend API routes return a clear `503` error.
-
-## Implemented MRV API flow
-
-- `POST /api/projects` -> Register plot, assign immutable-style `plotId`.
-- `GET /api/projects/:walletAddress` -> Farmer dashboard projects.
-- `POST /api/mrv/quarterly-run/:plotId` -> Run quarterly cycle and store NDVI + ML evidence.
-- `POST /api/mrv/annual-finalize/:plotId` -> Build annual MRV report, pin to IPFS, verify credits, and mint NFT token.
-- `GET /api/system/status` -> Dashboard integration health for DB/ML/IPFS/blockchain/GEE config.
-
-- **ML service integration**: if `ML_SERVICE_URL` is set, backend calls `POST {ML_SERVICE_URL}/mrv/infer`.
-- **Pinata IPFS integration**: if `PINATA_API_KEY` and `PINATA_API_SECRET` are set, backend uploads annual MRV report to Pinata.
-- **Blockchain integration**: if `BLOCKCHAIN_RPC_URL`, `BLOCKCHAIN_PRIVATE_KEY`, `CARBON_CONTRACT_ADDRESS`, and ABI (`CARBON_CONTRACT_ABI` or `CARBON_CONTRACT_ABI_PATH`) are set, backend calls on-chain `registerPlot(...)` and `mintCredit(...)`.
-
-If any integration config is missing/unavailable, backend automatically falls back to safe local simulation so development is never blocked.
+| Real | Simplified / mock |
+|---|---|
+| Sentinel-1/2, GEDI, NASADEM data via Earth Engine | Identity (demo ID, no KYC) |
+| Classifier, anomaly detector and carbon model trained and tested on real data | Single backend "oracle" writes to the chain |
+| Synthetic-control baseline, commit-reveal, on-chain credit rule | Donor pool = unenrolled mangroves, not certified degraded land |
+| Public, in-browser verification | Amoy testnet contract not yet redeployed |
+| | No field calibration: carbon stocks are likely conservative (see docs) |

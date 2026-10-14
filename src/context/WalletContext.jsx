@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-
-const WalletContext = createContext();
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { WalletContext } from './walletContextValue';
 
 const tokenStorageKey = (address) => `bcr-auth-token:${address.toLowerCase()}`;
 
@@ -33,8 +32,6 @@ const postJson = async (url, body) => {
   }
   return data;
 };
-
-export const useWallet = () => useContext(WalletContext);
 
 export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
@@ -78,8 +75,8 @@ export const WalletProvider = ({ children }) => {
     try {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAccount(accounts[0]);
-    } catch (err) {
-      console.error("User rejected connection request");
+    } catch {
+      console.error('User rejected connection request');
     } finally {
       setIsConnecting(false);
     }

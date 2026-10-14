@@ -7,6 +7,9 @@ module.exports = {
     version: "0.8.26",
     settings: {
       evmVersion: "cancun",
+      // The yearly credit calculation needs more local variables than the legacy pipeline allows.
+      viaIR: true,
+      optimizer: { enabled: true, runs: 200 },
     },
   },
   networks: {

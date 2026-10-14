@@ -222,3 +222,11 @@ def build_height_feature_image(start: str, end: str, region: ee.Geometry) -> ee.
 def quarter_of(start: str) -> int:
     """Calendar quarter (1-4) of a window's start date, YYYY-MM-DD."""
     return (int(start[5:7]) - 1) // 3 + 1
+
+
+def mangrove_mask() -> ee.Image:
+    """Mangroves in Global Mangrove Watch v4 (2020) AND ESA WorldCover class 95."""
+    gmw = (ee.ImageCollection("projects/sat-io/open-datasets/GMW/annual-extent/GMW_MNG_2020")
+           .mosaic().mask().reduce(ee.Reducer.max()).gt(0))
+    worldcover = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").eq(95)
+    return gmw.And(worldcover)

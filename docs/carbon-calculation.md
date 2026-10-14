@@ -16,6 +16,7 @@ Scope: **mangroves only.** Seagrass and saltmarsh are planned future additions.
 | How are credits decided? | Once a year: the carbon gain we can **prove** (larger than the measurement error), plus official soil accrual, minus a 12% safety buffer. |
 | How accurate is it? | Canopy height: ±3.5 m (R² 0.60) for new places, with 90% ranges that hold 90% of the time. Tree carbon per plot has wide ranges, so in year 1 credits come almost only from soil. |
 | Is it conservative? | Yes. Our biomass is at the low end of independent sources and well below the one Indian field measurement we found, so it under-credits rather than over-credits. |
+| Can the baseline be changed later? | No. It is sealed on the blockchain at day 0 and checked when revealed. |
 | Is it standard-grade? | It follows India's official mangrove methodology (BEE BM FR05.001), except that NASA GEDI laser data stands in for field plots. Every standard requires some field measurement, so this is research-grade until field plots are added. |
 
 ---
@@ -140,49 +141,50 @@ why gains are always measured against the **same season a year earlier**.
 
 ## 5. Annual credit calculation
 
-Implemented in `backend/services/credits.js`. For each year of 4 quarterly checks:
+The credit rule runs **on the blockchain** (`finalizeYear` in
+`blockchain/contracts/BlueCarbonRegistry.sol`). `backend/services/credits.js` mirrors it to
+explain it on screen, and the tests check that both agree. The baseline (what would have happened
+without the project) and its seal are explained in
+[baseline-and-verification.md](baseline-and-verification.md). In short:
 
-1. **Tree gain**, for each quarter with a usable estimate:
-   (tree CO₂ now) − (tree CO₂ same season last year). Same pixels, same model.
-2. **Its uncertainty:** combined 90% half-width = √(h_now² + h_before²). The two years are
-   treated as independent, which overstates the uncertainty.
-3. **Average** the gains and the half-widths over the usable quarters (at least 2 are required).
-   Half-widths are not shrunk by averaging, which is again conservative.
-4. **Uncertainty discount**, using India's official rule (CDM AR-TOOL14 v4.2, Appendix 2):
+1. **Each quarter**, the plot's tree carbon change is measured against the same season a year
+   earlier and recorded on-chain with its 90% range.
+2. **Extra carbon** per quarter = plot change − baseline change. The baseline change is the larger
+   of the forecast sealed at day 0 and what the look-alike donors actually did.
+3. **Year gain** = average over usable quarters (at least 2), and **cumulative gain** = sum over
+   years. The range of the cumulative gain is that of a single start-to-end comparison, so real
+   gains become provable after a few years.
+4. **Uncertainty discount** with India's official rule (CDM AR-TOOL14 v4.2, Appendix 2):
 
-   | Relative uncertainty (half-width ÷ gain) | Share of the half-width deducted |
+   | Relative uncertainty (range ÷ gain) | Share of the range deducted |
    |---|---|
    | ≤ 10% | 0 |
    | 10–15% | 25% |
    | 15–20% | 50% |
    | 20–30% | 75% |
-   | > 30% | 100% (only the lower end of the range counts) |
+   | > 30% | 100% (only the lower end of the gain counts) |
 
-   proven tree gain = max(0, gain − share × half-width)
-5. **Soil:** 0.5 t C/ha × cover factor × 3.667, i.e. 1.83 t CO₂/ha at full cover.
-6. Per hectare = proven tree gain + soil. Multiply by plot area.
-7. **Buffer:** withhold 12% for future losses such as cyclones or cutting.
-8. Subtract credits already issued.
-9. **Blocking rules:** any damage anomaly in the year blocks minting. Fewer than 2 usable
-   quarters, or a plot outside the area of applicability, means no tree credit.
-10. **Evidence:** the full calculation and every quarter's inputs are written to an audit report
-    whose IPFS hash is stored on-chain with the credit NFT, so anyone can recompute it.
+5. **Soil:** 0.5 t C/ha/yr × 3.667 × cover factor = up to 1.83 t CO₂/ha per year (India BEE default,
+   first 20 years).
+6. **Credits** = (proven tree gain + soil so far) × area × (1 − 12% buffer) − credits already issued.
+7. **Blocking:** any damage anomaly in the year means no credits that year.
+8. **Evidence:** the full calculation, the revealed baseline and every quarter's inputs go into an
+   audit report on IPFS. Its hash is the NFT's token URI.
 
-### Real example (from the end-to-end test, Mumbai, 1.44 ha)
+### Real example (end-to-end test, Mumbai, 1.44 ha, replay of Oct 2025 – Sep 2026)
 
 | Line | Value |
 |---|---|
-| Tree carbon gain vs same season last year | −3.3 ± 156.5 t CO₂/ha |
+| Extra tree carbon this year (plot − baseline) | −12.6 ± 236.0 t CO₂/ha |
 | Part we can prove | 0 |
 | Soil (100% mangrove cover) | +1.83 t CO₂/ha |
 | × 1.44 ha | 2.64 t CO₂ |
 | − 12% buffer | − 0.32 |
-| **Credits** | **2.32** |
+| **Credits** (calculated on-chain; identical to the backend mirror) | **2.32** |
 
-A young plantation growing about 10 t biomass/ha/yr adds about 25 t CO₂/ha/yr, which is far below a
-±150 t/ha range. Tree credits therefore appear only after several years, once the accumulated
-gain clearly exceeds the error. Credits never double count, because each year subtracts what
-was already issued.
+A young plantation adding about 25 t CO₂/ha per year is far below a ±150–250 t/ha range, so tree
+credits appear only after several years of real growth. Each year subtracts what was already
+issued, so nothing is counted twice.
 
 ---
 
@@ -282,14 +284,11 @@ What this shows:
    - Move the project from "research-grade" to the double-sampling method that CDM AR-TOOL14
      and India's BEE accept.
 2. **Soil cores** would replace the default soil rate (Tier 1) with measured values (Tier 2).
-3. **Baseline:** gains are currently compared with the same plot a year earlier. The planned
-   synthetic-control baseline (similar unrestored plots) will subtract natural growth that would
-   have happened anyway.
+3. **Baseline:** the synthetic-control baseline uses unenrolled mangroves nearby. Better control
+   sites (matched degraded land) and a longer pre-period would make it more robust.
 4. **More tall-forest training data** (e.g. more Andaman, Bangladesh Sundarbans) for regions
    like Andaman.
-5. **Multi-year crediting** needs the planned contract redesign. The current contract mints
-   once per plot.
-6. These are **indicative MRV estimates**, not verified credits under any registry.
+5. These are **indicative MRV estimates**, not verified credits under any registry.
 
 ---
 
@@ -308,7 +307,9 @@ From `ml-service/` (set `GEE_PROJECT` first):
 | `ml-service/app/carbon.py` | Chain constants, quantile forest, area of applicability, plot estimate |
 | `ml-service/models/canopy_height_report.txt` | Accuracy report |
 | `ml-service/models/carbon_validation_report.txt` | Independent comparison |
-| `backend/services/credits.js` | Annual credit calculation |
+| `backend/services/credits.js` | Mirror of the on-chain credit rule |
+| `blockchain/contracts/BlueCarbonRegistry.sol` | Seal, quarterly records, on-chain credit rule |
+| `docs/baseline-and-verification.md` | Baseline (synthetic control), sealing and public verification |
 | `reports/Blue carbon estimation model design.md` | Research behind these choices, with sources |
 
 ---

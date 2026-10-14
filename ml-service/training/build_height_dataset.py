@@ -26,12 +26,12 @@ from app.earth_engine import (  # noqa: E402
     HEIGHT_SCALE_M,
     build_height_feature_image,
     init_earth_engine,
+    mangrove_mask,
 )
 from training.build_dataset import REGIONS  # noqa: E402
 from training.validate_plots import HELD_OUT_REGIONS  # noqa: E402
 
 GEDI_L2A = "LARSE/GEDI/GEDI02_A_002_MONTHLY"
-GMW_2020 = "projects/sat-io/open-datasets/GMW/annual-extent/GMW_MNG_2020"
 MIN_SENSITIVITY = 0.95
 MAX_HEIGHT_M = 60
 
@@ -49,12 +49,6 @@ def quarter_window(year: int, quarter: int) -> tuple[str, str]:
     start_month = 3 * (quarter - 1) + 1
     end_year, end_month = (year + 1, 1) if quarter == 4 else (year, start_month + 3)
     return f"{year}-{start_month:02d}-01", f"{end_year}-{end_month:02d}-01"
-
-
-def mangrove_mask() -> ee.Image:
-    gmw = ee.ImageCollection(GMW_2020).mosaic().mask().reduce(ee.Reducer.max()).gt(0)
-    worldcover = ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").eq(95)
-    return gmw.And(worldcover)
 
 
 def gedi_heights(start: str, end: str, region: ee.Geometry) -> ee.Image:

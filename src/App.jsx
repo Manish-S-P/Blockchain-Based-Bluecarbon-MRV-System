@@ -1,10 +1,10 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { WalletProvider } from './context/WalletContext';
 import Navbar from './components/Navbar';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import ProjectRegistration from './pages/ProjectRegistration';
+import Verify, { Registry } from './pages/Verify';
 
 function App() {
   return (
@@ -17,6 +17,8 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/register" element={<ProjectRegistration />} />
+              <Route path="/verify" element={<Registry />} />
+              <Route path="/verify/:plotId" element={<Verify />} />
             </Routes>
           </main>
         </div>

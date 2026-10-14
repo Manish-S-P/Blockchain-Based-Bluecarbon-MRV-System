@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWallet } from '../context/WalletContext';
+import { useWallet } from '../context/walletContextValue';
 import { Leaf, LogOut, PlusCircle, Menu, X, Copy, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -37,6 +37,9 @@ const Navbar = () => {
           </Link>
 
           <div className="hidden md:flex items-center gap-3">
+            <Link to="/verify" className="text-slate-300 hover:text-white px-3.5 py-2 rounded-lg font-medium transition-colors hover:bg-white/[0.06]">
+              Public registry
+            </Link>
             {account ? (
               <>
                 {navLinks.map((link) => (
@@ -99,6 +102,9 @@ const Navbar = () => {
       {mobileOpen && (
         <div className="md:hidden border-t border-white/[0.06] bg-slate-900/95 backdrop-blur-xl animate-scale-in">
           <div className="px-4 py-4 space-y-2">
+            <Link to="/verify" onClick={() => setMobileOpen(false)} className="block text-slate-300 hover:text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-white/[0.06]">
+              Public registry
+            </Link>
             {account ? (
               <>
                 <div className="flex items-center gap-2 px-3 py-2 mb-3">

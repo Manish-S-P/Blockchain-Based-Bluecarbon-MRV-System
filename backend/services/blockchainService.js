@@ -1,126 +1,153 @@
+// Talks to BlueCarbonRegistry (blockchain/contracts/BlueCarbonRegistry.sol).
+//
+// When no chain is configured (BLOCKCHAIN_* unset) every call is simulated so development
+// still works; simulated results are marked onChain: false. Once a chain is configured,
+// failures are returned as errors instead of being hidden.
+
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { ethers } = require('ethers');
 
 const ECOSYSTEM_ENUM = { mangrove: 0, seagrass: 1, saltmarsh: 2 };
+const OUTCOMES = ['Minted', 'NoProvableGain', 'AnomalyDetected', 'InsufficientData'];
 
-const ecosystemToEnum = (vegetationType) => {
-  const value = ECOSYSTEM_ENUM[String(vegetationType || '').toLowerCase()];
-  if (value === undefined) {
-    throw new Error(`Unsupported ecosystem type for on-chain registration: ${vegetationType}`);
-  }
-  return value;
+/** t CO2 (or ha) as an 18-decimal integer string, the unit the contract uses. */
+const toWad = (value) => ethers.parseUnits(Number(value).toFixed(12), 18).toString();
+const fromWad = (value) => Number(ethers.formatUnits(value, 18));
+
+const loadAbi = () => {
+  if (process.env.CARBON_CONTRACT_ABI) return JSON.parse(process.env.CARBON_CONTRACT_ABI);
+  const abiPath = process.env.CARBON_CONTRACT_ABI_PATH;
+  if (!abiPath) return null;
+  const candidates = path.isAbsolute(abiPath)
+    ? [abiPath]
+    : [path.resolve(process.cwd(), abiPath), path.resolve(__dirname, '..', '..', abiPath)];
+  const resolved = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!resolved) throw new Error(`ABI file not found. Checked: ${candidates.join(', ')}`);
+  const parsed = JSON.parse(fs.readFileSync(resolved, 'utf-8'));
+  return Array.isArray(parsed) ? parsed : parsed.abi;
 };
 
-const getContractClient = (network = 'local') => {
-  const isAmoy = network === 'amoy';
-  const rpcUrl = isAmoy ? process.env.AMOY_RPC_URL : process.env.BLOCKCHAIN_RPC_URL;
-  const privateKey = isAmoy ? process.env.AMOY_PRIVATE_KEY : process.env.BLOCKCHAIN_PRIVATE_KEY;
-  const contractAddress = isAmoy ? process.env.AMOY_CONTRACT_ADDRESS : process.env.CARBON_CONTRACT_ADDRESS;
-  const contractAbiRaw = isAmoy && process.env.AMOY_CONTRACT_ABI ? process.env.AMOY_CONTRACT_ABI : process.env.CARBON_CONTRACT_ABI;
-  const contractAbiPath = isAmoy && process.env.AMOY_CONTRACT_ABI_PATH ? process.env.AMOY_CONTRACT_ABI_PATH : process.env.CARBON_CONTRACT_ABI_PATH;
-
-  if (!rpcUrl || !privateKey || !contractAddress) {
-    if (isAmoy) {
-      throw new Error(`Amoy configuration missing. Please add AMOY_RPC_URL, AMOY_PRIVATE_KEY, and AMOY_CONTRACT_ADDRESS to backend/.env`);
-    }
+let cachedContract;
+const getContract = () => {
+  if (cachedContract !== undefined) return cachedContract;
+  const { BLOCKCHAIN_RPC_URL: rpcUrl, BLOCKCHAIN_PRIVATE_KEY: privateKey, CARBON_CONTRACT_ADDRESS: address } = process.env;
+  const abi = loadAbi();
+  if (!rpcUrl || !privateKey || !address || !abi) {
+    cachedContract = null;
     return null;
   }
-
-  let contractAbi = null;
-  if (contractAbiRaw) {
-    contractAbi = JSON.parse(contractAbiRaw);
-  } else if (contractAbiPath) {
-    const candidatePaths = path.isAbsolute(contractAbiPath)
-      ? [contractAbiPath]
-      : [
-          path.resolve(process.cwd(), contractAbiPath),
-          path.resolve(__dirname, '..', '..', contractAbiPath),
-        ];
-
-    const resolved = candidatePaths.find((candidate) => fs.existsSync(candidate));
-    if (!resolved) {
-      throw new Error(`ABI file not found. Checked: ${candidatePaths.join(', ')}`);
-    }
-
-    const raw = fs.readFileSync(resolved, 'utf-8');
-    const parsed = JSON.parse(raw);
-    contractAbi = Array.isArray(parsed) ? parsed : parsed.abi;
-  }
-
-  if (!contractAbi) {
-    return null;
-  }
-
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const signer = new ethers.Wallet(privateKey, provider);
-  return new ethers.Contract(contractAddress, contractAbi, signer);
+  const signer = new ethers.Wallet(privateKey, new ethers.JsonRpcProvider(rpcUrl));
+  cachedContract = new ethers.Contract(address, abi, signer);
+  return cachedContract;
 };
 
-// Simulation is only used when no chain is configured. Once a chain is configured, failures
-// are surfaced instead of being masked by a fake transaction.
-const fallbackRegisterPlotOnChain = ({ plotId }) => ({
-  success: true,
-  txHash: `local-register-${plotId}`,
-  onChain: false,
-});
+const chainConfigured = () => Boolean(getContract());
+const fakeTx = (label) => `simulated-${label}-${crypto.randomBytes(6).toString('hex')}`;
 
-const fallbackMintCreditOnChain = ({ plotId, walletAddress, submittedCredits }) => {
-  const tokenSeed = `${plotId}:${walletAddress}:${submittedCredits}:${Date.now()}`;
-  const tokenId = crypto.createHash('sha1').update(tokenSeed).digest('hex').slice(0, 12);
-  return { tokenId, txHash: 'local-simulation', onChain: false };
-};
-
-const sendRegisterPlot = async (contract, { plotId, walletAddress, area, vegetationType }) => {
-  const areaWad = ethers.parseUnits(String(area), 18);
-  const tx = await contract.registerPlot(plotId, walletAddress, areaWad, ecosystemToEnum(vegetationType));
+const send = async (fn) => {
+  const tx = await fn();
   return tx.wait();
 };
 
-const registerPlotOnChain = async ({ plotId, walletAddress, area, vegetationType, network = 'local' }) => {
-  const contract = getContractClient(network);
-  if (!contract) {
-    return fallbackRegisterPlotOnChain({ plotId });
-  }
-
-  const receipt = await sendRegisterPlot(contract, { plotId, walletAddress, area, vegetationType });
-  return { success: true, txHash: receipt.hash, onChain: true };
+const registerPlotOnChain = async ({ plotId, walletAddress, area, vegetationType }) => {
+  const contract = getContract();
+  if (!contract) return { txHash: fakeTx('register'), onChain: false };
+  const ecosystem = ECOSYSTEM_ENUM[vegetationType];
+  if (ecosystem === undefined) throw new Error(`Unsupported ecosystem: ${vegetationType}`);
+  const receipt = await send(() => contract.registerPlot(plotId, walletAddress, toWad(area), ecosystem));
+  return { txHash: receipt.hash, onChain: true };
 };
 
-const readMintedTokenId = (contract, receipt) => {
+/** keccak256(abi.encode(plotId, year, dayZero, changes, halfWidths, auditHash, salt)), same as the contract. */
+const computeCommitment = ({ plotId, year, dayZero, changesWad, halfWidthsWad, auditHash, salt }) => ethers.keccak256(
+  ethers.AbiCoder.defaultAbiCoder().encode(
+    ['string', 'uint16', 'uint64', 'int256[4]', 'uint256[4]', 'bytes32', 'bytes32'],
+    [plotId, year, dayZero, changesWad, halfWidthsWad, auditHash, salt],
+  ),
+);
+
+const commitBaselineOnChain = async ({ plotId, commitment, dayZero }) => {
+  const contract = getContract();
+  if (!contract) return { txHash: fakeTx('commit'), onChain: false };
+  const receipt = await send(() => contract.commitBaseline(plotId, commitment, dayZero));
+  return { txHash: receipt.hash, onChain: true };
+};
+
+const recordObservationOnChain = async ({ plotId, quarter, observation, dataHash }) => {
+  const contract = getContract();
+  if (!contract) return { txHash: fakeTx('observe'), onChain: false };
+  const receipt = await send(() => contract.recordObservation(
+    plotId, quarter, toWad(observation.plotChange), toWad(observation.plotHalfWidth),
+    Math.round(observation.cover * 10_000), observation.usable, observation.anomaly, dataHash,
+  ));
+  return { txHash: receipt.hash, onChain: true };
+};
+
+/**
+ * Reveal the baseline and let the contract compute and mint the year's credits.
+ * `simulated` is the backend's mirror result, used only when no chain is configured.
+ */
+const finalizeYearOnChain = async ({ plotId, reveal, reportIpfsHash, simulated }) => {
+  const contract = getContract();
+  if (!contract) {
+    return {
+      onChain: false,
+      txHash: fakeTx('finalize'),
+      outcome: simulated.outcome,
+      credits: simulated.credits,
+      tokenId: simulated.credits > 0 ? fakeTx('token') : '',
+    };
+  }
+  const receipt = await send(() => contract.finalizeYear(plotId, reveal, reportIpfsHash));
   for (const log of receipt.logs) {
+    let parsed;
     try {
-      const parsed = contract.interface.parseLog(log);
-      if (parsed?.name === 'CreditMinted') {
-        return parsed.args.tokenId.toString();
-      }
+      parsed = contract.interface.parseLog(log);
     } catch {
-      // Log from another contract/event (e.g. ERC721 Transfer); skip it.
+      continue;
+    }
+    if (parsed?.name === 'YearFinalized') {
+      const args = parsed.args;
+      return {
+        onChain: true,
+        txHash: receipt.hash,
+        outcome: OUTCOMES[Number(args.outcome)],
+        credits: fromWad(args.credits),
+        tokenId: args.tokenId > 0n ? args.tokenId.toString() : '',
+        yearGain: fromWad(args.yearGain),
+        yearHalfWidth: fromWad(args.yearHalfWidth),
+        provenTreeGain: fromWad(args.provenTreeGain),
+        cumulativeSoil: fromWad(args.cumulativeSoil),
+      };
     }
   }
-  throw new Error(`CreditMinted event not found in transaction ${receipt.hash}`);
+  throw new Error(`YearFinalized event not found in transaction ${receipt.hash}`);
 };
 
-const mintCreditOnChain = async ({ plotId, walletAddress, submittedCredits, reportIpfsHash, network = 'local', area, vegetationType }) => {
-  const contract = getContractClient(network);
-  if (!contract) {
-    return fallbackMintCreditOnChain({ plotId, walletAddress, submittedCredits });
-  }
-
-  // The plot may not exist on this chain yet (e.g. registered locally, minted on Amoy,
-  // or the contract was redeployed), so register it first when needed.
-  const plot = await contract.plots(plotId);
-  if (!plot.exists) {
-    await sendRegisterPlot(contract, { plotId, walletAddress, area, vegetationType });
-  }
-
-  const tx = await contract.mintCredit(walletAddress, plotId, ethers.parseUnits(String(submittedCredits), 18), reportIpfsHash);
-  const receipt = await tx.wait();
-  return { tokenId: readMintedTokenId(contract, receipt), txHash: receipt.hash, onChain: true };
+/** On-chain record of a plot's year, for the public verification page. */
+const readYearOnChain = async (plotId, year) => {
+  const contract = getContract();
+  if (!contract) return null;
+  const record = await contract.yearRecords(plotId, year);
+  return {
+    contract: await contract.getAddress(),
+    commitment: record.commitment,
+    dayZero: Number(record.dayZero),
+    observations: Number(record.observations),
+    finalized: record.finalized,
+  };
 };
 
 module.exports = {
+  toWad,
+  fromWad,
+  chainConfigured,
+  computeCommitment,
   registerPlotOnChain,
-  mintCreditOnChain,
+  commitBaselineOnChain,
+  recordObservationOnChain,
+  finalizeYearOnChain,
+  readYearOnChain,
 };

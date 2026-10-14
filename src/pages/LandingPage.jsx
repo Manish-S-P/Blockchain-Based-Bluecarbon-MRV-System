@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useWallet } from '../context/WalletContext';
+import { useWallet } from '../context/walletContextValue';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, MapPin, Satellite, Award } from 'lucide-react';
 
