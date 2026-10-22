@@ -13,8 +13,8 @@ const percent = (value) => `${Math.round((value || 0) * 100)}%`;
 const SERVICE_NAMES = {
   database: 'database',
   mlService: 'satellite analysis',
-  pinata: 'IPFS report storage (using a local placeholder)',
-  blockchain: 'blockchain (using simulation)',
+  pinata: 'IPFS report storage',
+  blockchain: 'blockchain',
   gee: 'Google Earth Engine',
 };
 
@@ -133,6 +133,7 @@ const Dashboard = () => {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [busy, setBusy] = useState('');
   const [apiStatus, setApiStatus] = useState(null);
+  const [statusDetails, setStatusDetails] = useState({});
   const [errorMessage, setErrorMessage] = useState('');
   const [showDetails, setShowDetails] = useState(false);
 
@@ -159,10 +160,15 @@ const Dashboard = () => {
   const fetchStatus = async () => {
     const res = await fetch('/api/system/status');
     const data = await res.json();
-    return res.ok && data.success ? data.services : null;
+    return res.ok && data.success ? data : null;
   };
 
-  const loadStatus = () => fetchStatus().then(setApiStatus).catch((error) => console.error('Status fetch failed', error));
+  const applyStatus = (data) => {
+    setApiStatus(data?.services || null);
+    setStatusDetails(data?.details || {});
+  };
+
+  const loadStatus = () => fetchStatus().then(applyStatus).catch((error) => console.error('Status fetch failed', error));
 
   const post = async (url, body) => {
     const res = await authFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
@@ -222,7 +228,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     let active = true;
-    fetchStatus().then((services) => active && setApiStatus(services)).catch(() => {});
+    fetchStatus().then((data) => active && applyStatus(data)).catch(() => {});
     return () => { active = false; };
   }, []);
 
@@ -242,7 +248,9 @@ const Dashboard = () => {
   const cycles = selected ? currentCycles(selected) : [];
   const step = selected ? nextStep(selected) : null;
   const result = selected ? lastResult(selected) : null;
-  const offline = apiStatus ? Object.entries(apiStatus).filter(([, up]) => !up).map(([name]) => name) : [];
+  // Pinata (real IPFS uploads) is optional; without it reports get a local placeholder hash.
+  const offline = apiStatus ? Object.entries(apiStatus).filter(([name, up]) => !up && name !== 'pinata').map(([name]) => name) : [];
+  const ipfsNote = apiStatus && !apiStatus.pinata ? ' Reports use local placeholder hashes (IPFS uploads are optional).' : '';
   const disabled = busy !== '';
 
   return (
@@ -306,7 +314,7 @@ const Dashboard = () => {
                     <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 mt-1" />
                   </div>
                   <div className="flex items-center justify-between mt-3 gap-2">
-                    <span className="text-sm text-slate-400">{p.area} ha</span>
+                    <span className="text-sm text-slate-400">{fmt(p.area, 2)} ha</span>
                     {statusPill(p)}
                   </div>
                 </button>
@@ -321,7 +329,7 @@ const Dashboard = () => {
                       <h2 className="text-2xl font-bold text-white">
                         Mangrove plot · {!selected.baseline && result ? `Year ${result.year} finished` : `Year ${selected.year}`}
                       </h2>
-                      <p className="text-slate-400">{selected.area} hectares · {selected.address}</p>
+                      <p className="text-slate-400">{fmt(selected.area, 2)} hectares · {selected.address}</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <Link to={`/verify/${selected.plotId}`} className="btn-ghost text-sm px-3 py-1.5 flex items-center gap-1.5" title="Public page anyone can use to check this plot">
@@ -536,7 +544,9 @@ const Dashboard = () => {
         {apiStatus && (
           <p className="text-sm text-slate-500 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${offline.length ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-            {offline.length === 0 ? 'All services are running.' : `Some services are offline: ${offline.map((n) => SERVICE_NAMES[n] || n).join(', ')}.`}
+            {offline.length === 0
+              ? `All services are running.${ipfsNote}`
+              : `Not ready: ${offline.map((n) => `${SERVICE_NAMES[n] || n}${statusDetails[n] ? ` (${statusDetails[n]})` : ''}`).join('; ')}.`}
           </p>
         )}
       </div>

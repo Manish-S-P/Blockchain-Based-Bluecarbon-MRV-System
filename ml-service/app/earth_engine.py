@@ -46,18 +46,31 @@ def _load_service_account() -> tuple[str, str] | None:
 
 
 def init_earth_engine() -> bool:
-    """Initializes Earth Engine once per process. Returns False if credentials are missing."""
+    """Initializes Earth Engine once per process. Returns False if no credentials work.
+
+    Uses, in order: a service-account key file (keys/gee-service-account.json or
+    GEE_SERVICE_ACCOUNT_JSON_PATH), then personal credentials from `earthengine authenticate`.
+    """
     global _initialized
     if _initialized:
         return True
 
+    project = os.getenv("GEE_PROJECT") or None
     account = _load_service_account()
-    if account is None:
-        return False
-
-    service_account_email, private_key = account
-    credentials = ee.ServiceAccountCredentials(service_account_email, key_data=private_key)
-    ee.Initialize(credentials, project=os.getenv("GEE_PROJECT"))
+    if account is not None:
+        service_account_email, private_key = account
+        credentials = ee.ServiceAccountCredentials(service_account_email, key_data=private_key)
+        ee.Initialize(credentials, project=project)
+    else:
+        # Only try the personal login if `earthengine authenticate` has saved one; otherwise the
+        # Google auth library keeps searching for credentials and the request hangs.
+        if not Path(ee.oauth.get_credentials_path()).exists():
+            return False
+        try:
+            ee.Initialize(project=project)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Earth Engine: personal login failed ({exc})")
+            return False
     _initialized = True
     return True
 

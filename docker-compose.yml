@@ -1,0 +1,110 @@
+# One-command local setup:   cp .env.example .env   (set GEE_PROJECT)   then   docker compose up
+# Open http://localhost:5173 when the "frontend" service says "ready".
+# Stop: docker compose down        Reset all demo data and the chain: docker compose down -v
+
+x-node: &node
+  image: node:22-bookworm
+  environment:
+    npm_config_update_notifier: "false"
+    npm_config_fund: "false"
+    npm_config_audit: "false"
+
+services:
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+
+  chain:
+    <<: *node
+    working_dir: /app/blockchain
+    command: sh -c "npm ci --no-progress && npx hardhat node --hostname 0.0.0.0"
+    volumes:
+      - ./blockchain:/app/blockchain
+      - chain-modules:/app/blockchain/node_modules
+    ports:
+      - "${CHAIN_PORT:-8545}:8545"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},body:'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}'}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      retries: 60
+
+  deploy:
+    <<: *node
+    working_dir: /app/blockchain
+    command: sh -c "npx hardhat run scripts/deploy-and-export.js --network localhost"
+    environment:
+      HARDHAT_RPC_URL: http://chain:8545
+    volumes:
+      - ./blockchain:/app/blockchain
+      - chain-modules:/app/blockchain/node_modules
+      - ./backend:/app/backend
+    depends_on:
+      chain:
+        condition: service_healthy
+
+  ml:
+    build: ./ml-service
+    environment:
+      GEE_PROJECT: ${GEE_PROJECT:?Set GEE_PROJECT in .env (see README)}
+    volumes:
+      - ./ml-service/keys:/app/keys:ro
+      - ${EARTHENGINE_CREDENTIALS_DIR:-./ml-service/keys}:/root/.config/earthengine:ro
+    ports:
+      - "${ML_PORT:-8000}:8000"
+
+  backend:
+    <<: *node
+    working_dir: /app/backend
+    # The freshly deployed contract settings override anything in backend/.env.
+    command: sh -c "set -a && . ./.generated-blockchain.env && set +a && npm ci --no-progress && node server.js"
+    environment:
+      PORT: "5050"
+      MONGODB_URI: mongodb://mongo:27017/blue_carbon_registry
+      ML_SERVICE_URL: http://ml:8000
+      BLOCKCHAIN_RPC_URL: http://chain:8545
+      AUTH_SECRET: ${AUTH_SECRET:-local-docker-demo-secret}
+      STRICT_REAL_DATA: "true"
+      GEE_PROJECT: ${GEE_PROJECT}
+      PINATA_API_KEY: ${PINATA_API_KEY:-}
+      PINATA_API_SECRET: ${PINATA_API_SECRET:-}
+    volumes:
+      - ./backend:/app/backend
+      - backend-modules:/app/backend/node_modules
+      - ./blockchain/artifacts:/app/blockchain/artifacts:ro
+    ports:
+      - "${BACKEND_PORT:-5050}:5050"
+    depends_on:
+      mongo:
+        condition: service_started
+      ml:
+        condition: service_started
+      deploy:
+        condition: service_completed_successfully
+
+  frontend:
+    <<: *node
+    working_dir: /app
+    command: sh -c "npm ci --no-progress && npx vite --host 0.0.0.0 --port 5173 --strictPort"
+    environment:
+      VITE_BACKEND_URL: http://backend:5050
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./vite.config.js:/app/vite.config.js
+      - ./tailwind.config.js:/app/tailwind.config.js
+      - ./postcss.config.js:/app/postcss.config.js
+      - frontend-modules:/app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
+  chain-modules:
+  backend-modules:
+  frontend-modules:

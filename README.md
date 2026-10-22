@@ -34,10 +34,66 @@ Register plot ──► Seal baseline (day 0) ──► 4 quarterly satellite ch
 
 ---
 
-## Run it locally
+## Quick start (Docker, any OS)
 
-You need Node 20+, Python 3.12+, Docker (for MongoDB), a Google Earth Engine service account,
-and MetaMask in the browser.
+Works the same on Windows, macOS and Linux. You need
+[Docker Desktop](https://www.docker.com/products/docker-desktop/), the
+[MetaMask](https://metamask.io/download/) browser extension and Google Earth Engine access (below).
+
+```bash
+git clone <this repo> && cd blue-carbon-registry
+cp .env.example .env          # Windows: copy .env.example .env
+# edit .env: set GEE_PROJECT (and EARTHENGINE_CREDENTIALS_DIR if you use a personal login)
+docker compose up --build     # first run takes ~5-10 minutes (downloads and installs)
+```
+
+When the `frontend` service prints `ready`, open **http://localhost:5173**. In a second terminal:
+
+```bash
+npm install           # once, on your computer (needs Node 20+), for the two helper commands below
+npm run check         # are all services ready? (the dashboard footer shows the same)
+npm run smoke-test    # runs a real plot through a whole year in ~1-2 minutes, then deletes it
+```
+
+| Task | Command |
+|---|---|
+| Stop | `docker compose down` |
+| Start again (keeps your plots) | `docker compose up` |
+| Wipe all demo data and start fresh | `docker compose down -v` then `docker compose up` |
+| Ports already in use | set `FRONTEND_PORT`, `BACKEND_PORT`, `ML_PORT`, `CHAIN_PORT` in `.env` |
+
+### Google Earth Engine access (one time, free for students)
+
+The ML service reads Sentinel satellite data from Earth Engine, so each person needs their own access:
+
+1. Sign in at https://code.earthengine.google.com/register and register a **Google Cloud project**
+   for **non-commercial / academic** use. Note the project ID, and put it in `.env` as `GEE_PROJECT=<id>`.
+2. Sign in, using **one** of these:
+   - **Personal login (easiest):** `pip install earthengine-api`, then run `earthengine authenticate`
+     and follow the browser prompt. In `.env` set
+     `EARTHENGINE_CREDENTIALS_DIR=~/.config/earthengine`
+     (Windows: `C:\Users\<you>\.config\earthengine`).
+   - **Service account:** in the Google Cloud console, create a service account in that project. Give it the
+     roles *Earth Engine Resource Viewer* and *Service Usage Consumer*, create a JSON key, and save it as
+     `ml-service/keys/gee-service-account.json`.
+3. Never commit keys or `.env`; both are git-ignored. Each person should use their own access rather than sharing keys.
+
+### Troubleshooting
+
+| Symptom (dashboard footer / `npm run check`) | Fix |
+|---|---|
+| Google Earth Engine: not signed in | Check `GEE_PROJECT` and the login/key above, then `docker compose restart ml` |
+| Blockchain: no contract at the configured address | The chain was restarted. Run `docker compose up -d` (redeploys) |
+| "The blockchain does not have this plot's current year" | Same cause, but a year was in progress: delete the plot and register it again |
+| Satellite analysis: not reachable | `docker compose logs ml`; the first start loads three models (~30 s) |
+| Plot rejected "only 58% confidence" | Draw the boundary inside a dense, uniform mangrove patch (not roads, water or buildings) |
+| MetaMask asks to sign a message | Expected: that is the login. No network or test ETH is needed |
+
+---
+
+## Manual setup (without Docker)
+
+Use this if you want to develop on the code directly.
 
 ### 1. MongoDB
 
@@ -51,7 +107,7 @@ docker run -d --name bcr-mongo -p 127.0.0.1:27017:27017 mongo:7
 cd blockchain
 npm install
 npm run node                       # terminal 1: local chain on http://127.0.0.1:8545
-npm run deploy:local:export        # terminal 2: deploys and writes backend/.generated-blockchain.env
+npm run deploy:local:export        # terminal 2: deploys; the backend picks the address up automatically
 ```
 
 ### 3. ML service
@@ -73,7 +129,7 @@ in `ml-service/models/`. Retraining is described in `ml-service/README.md`.
 ```bash
 cd backend
 npm install
-cp .env.example .env   # then fill in the values below
+cp .env.example .env   # then fill in the values below (leave BLOCKCHAIN_* empty for the local chain)
 npm run dev            # http://localhost:5050
 ```
 
@@ -83,10 +139,7 @@ Key settings in `backend/.env`:
 |---|---|---|
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/blue_carbon_registry` | |
 | `ML_SERVICE_URL` | `http://127.0.0.1:8000` | |
-| `BLOCKCHAIN_RPC_URL` | `http://127.0.0.1:8545` | Leave the three `BLOCKCHAIN_*` values empty to simulate the chain |
-| `BLOCKCHAIN_PRIVATE_KEY` | Hardhat account #0 key | The backend is the contract owner (MRV oracle) |
-| `CARBON_CONTRACT_ADDRESS` | from `deploy:local:export` | |
-| `CARBON_CONTRACT_ABI_PATH` | `blockchain/artifacts/contracts/BlueCarbonRegistry.sol/BlueCarbonRegistry.json` | |
+| `BLOCKCHAIN_*`, `CARBON_CONTRACT_*` | (empty) | For the local chain these come automatically from `backend/.generated-blockchain.env`, written by the deploy script. Set them only for another network (e.g. Amoy) |
 | `AUTH_SECRET` | `openssl rand -hex 32` | Signs wallet sessions |
 | `PINATA_API_KEY` / `PINATA_API_SECRET` | | Optional; without them reports get a local placeholder hash |
 | `GEE_PROJECT` | | |
@@ -105,6 +158,9 @@ need a network or test ETH: it only signs the login message, and the backend pay
 ---
 
 ## Demo walkthrough
+
+For a live presentation, follow [docs/presentation-guide.md](docs/presentation-guide.md).
+
 
 1. Open http://localhost:5173 and click **Connect wallet** (MetaMask signs a login message).
 2. **Add a plot.** Switch the map to *Satellite*, click the corners of a mangrove patch (e.g.
@@ -125,6 +181,7 @@ need a network or test ETH: it only signs the login message, and the backend pay
 cd blockchain && npm test      # contract: seal/reveal, BaselineMismatch, anomaly, multi-year, owner-only
 cd backend && npm test         # credit rule mirror and monitoring windows
 npm run lint                   # frontend
+npm run smoke-test             # whole year end to end against a running app
 ```
 
 Model evaluation reports (accuracy on regions the model never saw) are in `ml-service/models/*_report.txt`.

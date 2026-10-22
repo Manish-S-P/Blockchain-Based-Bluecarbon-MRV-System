@@ -147,7 +147,7 @@ const Verify = () => {
         <p className="text-emerald-400 font-medium">Public verification · no login needed</p>
         <h1 className="text-3xl font-bold text-white">Mangrove plot {plot.plotId}</h1>
         <p className="text-slate-400 mt-1">
-          {plot.area} hectares · registered {plot.registeredAt?.slice(0, 10)} · satellite check at registration: {plot.initialIdentifiedEcosystem} ({Math.round((plot.initialEcosystemConfidence || 0) * 100)}% sure)
+          {fmt(plot.area, 2)} hectares · registered {plot.registeredAt?.slice(0, 10)} · satellite check at registration: {plot.initialIdentifiedEcosystem} ({Math.round((plot.initialEcosystemConfidence || 0) * 100)}% sure)
           · {fmt(plot.carbonCredits, 2)} credits issued so far. Personal details of the owner are not shown.
         </p>
       </div>
@@ -230,7 +230,7 @@ export const Registry = () => {
             <Link key={p.plotId} to={`/verify/${p.plotId}`} className="flex flex-wrap items-center justify-between gap-2 p-4 hover:bg-white/[0.03]">
               <div>
                 <p className="text-white font-medium font-mono">{p.plotId}</p>
-                <p className="text-sm text-slate-400">{p.area} ha · {p.status} · year {p.year}</p>
+                <p className="text-sm text-slate-400">{fmt(p.area, 2)} ha · {p.status} · year {p.year}</p>
               </div>
               <span className="text-emerald-300">{fmt(p.carbonCredits, 2)} credits</span>
             </Link>

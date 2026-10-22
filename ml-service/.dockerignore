@@ -1,0 +1,5 @@
+.venv
+keys
+training/data
+__pycache__
+*.pyc

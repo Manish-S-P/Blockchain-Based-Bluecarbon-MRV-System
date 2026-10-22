@@ -33,6 +33,25 @@ const postJson = async (url, body) => {
   return data;
 };
 
+// Remembers "Log out" so a page refresh does not log the user straight back in
+// (MetaMask keeps the site connected until the user disconnects it there).
+const LOGGED_OUT_KEY = 'bcr-logged-out';
+const setLoggedOut = (value) => {
+  try {
+    if (value) localStorage.setItem(LOGGED_OUT_KEY, '1');
+    else localStorage.removeItem(LOGGED_OUT_KEY);
+  } catch {
+    // storage unavailable: logout lasts until refresh
+  }
+};
+const isLoggedOut = () => {
+  try {
+    return localStorage.getItem(LOGGED_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
 export const WalletProvider = ({ children }) => {
   const [account, setAccount] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -42,14 +61,15 @@ export const WalletProvider = ({ children }) => {
       if (window.ethereum) {
         try {
           const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-          if (accounts.length > 0) {
+          if (accounts.length > 0 && !isLoggedOut()) {
             setAccount(accounts[0]);
           }
         } catch (err) {
-          console.error("Failed to fetch initial accounts:", err);
+          console.error('Failed to fetch initial accounts:', err);
         }
 
         window.ethereum.on('accountsChanged', (accounts) => {
+          if (isLoggedOut()) return;
           if (accounts.length > 0) {
             setAccount(accounts[0]);
           } else {
@@ -67,9 +87,10 @@ export const WalletProvider = ({ children }) => {
 
   const connectWallet = async () => {
     if (!window.ethereum) {
-      alert("MetaMask is not installed. Please install it to use this application.");
+      alert('MetaMask is not installed. Please install the MetaMask browser extension to use this application.');
       return;
     }
+    setLoggedOut(false);
 
     setIsConnecting(true);
     try {
@@ -83,6 +104,7 @@ export const WalletProvider = ({ children }) => {
   };
 
   const disconnect = () => {
+    setLoggedOut(true);
     if (account) storeToken(account, null);
     setAccount(null);
   };

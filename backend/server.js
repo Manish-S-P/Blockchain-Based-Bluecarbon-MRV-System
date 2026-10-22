@@ -1,14 +1,16 @@
-require('dotenv').config({ path: `${__dirname}/.env` });
+require('dotenv').config({ path: `${__dirname}/.env`, quiet: true });
+// Contract address etc. written by `npm run deploy:local:export`; fills only values not set above.
+require('dotenv').config({ path: `${__dirname}/.generated-blockchain.env`, quiet: true });
 const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const Project = require('./models/Project');
-const { runMrvModels, actualDonorChange } = require('./services/mlService');
+const { runMrvModels, actualDonorChange, mlHealth } = require('./services/mlService');
 const { uploadMrvReportToIpfs } = require('./services/ipfsService');
 const {
-  chainConfigured, registerPlotOnChain, commitBaselineOnChain, recordObservationOnChain,
-  finalizeYearOnChain, readYearOnChain, toWad,
+  chainHealth, ensurePlotOnChain, explainChainError, registerPlotOnChain, commitBaselineOnChain,
+  recordObservationOnChain, finalizeYearOnChain, readYearOnChain, toWad,
 } = require('./services/blockchainService');
 const { createSealedBaseline, sha256Hex } = require('./services/baselineService');
 const { quarterObservation, computeYearCredits } = require('./services/credits');
@@ -50,7 +52,8 @@ const route = (handler) => async (req, res) => {
     await handler(req, res);
   } catch (err) {
     console.error(err);
-    res.status(err.status || 500).json({ success: false, error: err.message });
+    const chainAdvice = explainChainError(err);
+    res.status(chainAdvice ? 409 : err.status || 500).json({ success: false, error: chainAdvice || err.message });
   }
 };
 
@@ -140,7 +143,7 @@ app.post('/api/projects', ensureDbConnected, requireAuth, route(async (req, res)
 
   const coordinates = Array.isArray(req.body.coordinates) ? req.body.coordinates : [];
   const area = computePolygonAreaHectares(coordinates);
-  if (area <= 0) throw fail(400, 'Unable to compute area from map polygon. Plot at least 3 valid points.');
+  if (area <= 0) throw fail(400, 'Could not work out the plot area. Click at least 3 corners, going around the plot in order so the lines do not cross.');
 
   // Overlap check: a piece of land can only be registered once.
   const boundary = toGeoJsonPolygon(coordinates);
@@ -202,18 +205,27 @@ app.post('/api/projects', ensureDbConnected, requireAuth, route(async (req, res)
   res.status(201).json({ success: true, project, registerTxHash: project.registerTxHash });
 }));
 
-app.get('/api/system/status', (req, res) => {
+// Real readiness check (used by the dashboard and `npm run check` before a demo).
+app.get('/api/system/status', route(async (req, res) => {
+  const [ml, chain] = await Promise.all([mlHealth(), chainHealth()]);
+  const modelsLoaded = Boolean(ml && ml.classifierLoaded && ml.anomalyDetectorLoaded && ml.carbonModelLoaded);
   res.status(200).json({
     success: true,
     services: {
       database: dbConnected,
-      mlService: isConfigured(process.env.ML_SERVICE_URL),
+      mlService: modelsLoaded,
+      gee: Boolean(ml && ml.earthEngine),
+      blockchain: chain.ok,
       pinata: isConfigured(process.env.PINATA_API_KEY) && isConfigured(process.env.PINATA_API_SECRET),
-      blockchain: chainConfigured(),
-      gee: isConfigured(process.env.GEE_PROJECT),
+    },
+    details: {
+      mlService: ml ? (modelsLoaded ? 'reachable, all models loaded' : 'reachable, but a model is missing') : 'not reachable',
+      gee: ml ? (ml.earthEngine ? 'signed in' : 'not signed in (check the key file and GEE_PROJECT)') : 'unknown (ML service down)',
+      blockchain: chain.message,
+      pinata: isConfigured(process.env.PINATA_API_KEY) ? 'configured' : 'not configured (local placeholder hashes)',
     },
   });
-});
+}));
 
 app.get('/api/projects/:walletAddress', ensureDbConnected, requireAuth, route(async (req, res) => {
   if (!isWalletAddress(req.params.walletAddress) || req.params.walletAddress.toLowerCase() !== req.walletAddress) {
@@ -234,7 +246,7 @@ app.delete('/api/projects/:id', ensureDbConnected, requireAuth, route(async (req
 
 app.post('/api/mrv/baseline/:plotId', ensureDbConnected, requireAuth, route(async (req, res) => {
   const project = await findOwnedProject(req, { plotId: req.params.plotId });
-  if (project.baseline) throw fail(400, 'The baseline for this year is already locked.');
+  if (project.baseline) throw fail(400, 'The baseline for this year is already sealed.');
   if (currentCycles(project).length > 0) throw fail(400, 'This year already has quarterly checks.');
 
   let windows;
@@ -247,6 +259,8 @@ app.post('/api/mrv/baseline/:plotId', ensureDbConnected, requireAuth, route(asyn
     windows = nextYearWindows(previous.baseline.dayZero, 'live');
   }
 
+  // Make sure the plot exists on-chain (it may be missing after a local chain restart).
+  await ensurePlotOnChain(project);
   const others = await Project.find({ plotId: { $ne: project.plotId } }, 'coordinates');
   const sealed = await createSealedBaseline({
     project, year: project.year, windows, excludePolygons: others.map((p) => p.coordinates),
@@ -266,7 +280,7 @@ app.post('/api/mrv/baseline/:plotId', ensureDbConnected, requireAuth, route(asyn
 
 app.post('/api/mrv/quarterly-run/:plotId', ensureDbConnected, requireAuth, route(async (req, res) => {
   const project = await findOwnedProject(req, { plotId: req.params.plotId });
-  if (!project.baseline) throw fail(400, 'Lock the baseline first.');
+  if (!project.baseline) throw fail(400, 'Seal the baseline first.');
   const done = currentCycles(project).length;
   if (done >= 4) throw fail(400, 'All 4 quarterly checks for this year are done.');
 
@@ -304,7 +318,7 @@ app.post('/api/mrv/quarterly-run/:plotId', ensureDbConnected, requireAuth, route
 app.post('/api/mrv/annual-finalize/:plotId', ensureDbConnected, requireAuth, route(async (req, res) => {
   const project = await findOwnedProject(req, { plotId: req.params.plotId });
   const cycles = currentCycles(project);
-  if (!project.baseline) throw fail(400, 'No baseline is locked for this year.');
+  if (!project.baseline) throw fail(400, 'No baseline is sealed for this year yet.');
   if (cycles.length < 4) throw fail(400, 'Finishing the year needs all 4 quarterly checks.');
 
   const audit = JSON.parse(project.baseline.auditJson);

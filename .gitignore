@@ -31,3 +31,10 @@ __pycache__/
 
 # Hardhat build cache
 blockchain/cache/
+
+# Written by the deploy script, machine-specific
+backend/.generated-blockchain.env
+# Docker compose settings
+.env
+# Hardhat build output (recompiled by every deploy)
+blockchain/artifacts/

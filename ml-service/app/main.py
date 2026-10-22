@@ -7,6 +7,7 @@ from .anomaly import AnomalyDetector, AnomalyResult
 from .baseline import actual_change, build_baseline
 from .carbon import CarbonEstimate, CarbonModel
 from .classifier import EcosystemClassifier
+from .earth_engine import init_earth_engine
 from .gee_service import fetch_plot_pixels, fetch_quarter_observation, resolve_window, window_quarter
 from .schemas import ActualChangeRequest, BaselineRequest, CarbonOut, MlvInferRequest, MlvInferResponse
 
@@ -16,10 +17,19 @@ anomaly_detector = AnomalyDetector()
 carbon_model = CarbonModel()
 
 
+def _earth_engine_ready() -> bool:
+    try:
+        return init_earth_engine()
+    except Exception as exc:  # noqa: BLE001
+        print(f"Earth Engine sign-in failed: {exc}")
+        return False
+
+
 @app.get("/health")
 def health() -> dict[str, str | bool]:
     return {
         "status": "ok",
+        "earthEngine": _earth_engine_ready(),
         "classifierLoaded": classifier.available,
         "anomalyDetectorLoaded": anomaly_detector.available,
         "carbonModelLoaded": carbon_model.available,
